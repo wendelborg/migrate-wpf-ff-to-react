@@ -12,7 +12,7 @@ function buildPath(route: string, params?: Record<string, unknown>): string {
   const base = PAGE_ROUTES[route] ?? `/${route}`;
   if (!params) return base;
 
-  // Append known path segments (e.g. orderId → /content-b/789)
+  // Append known path segments (e.g. orderId -> /content-b/789)
   const orderId = params['orderId'];
   if (orderId !== undefined) return `${base}/${String(orderId)}`;
 

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { BridgeProvider } from './bridge';
-import { webBridge } from './bridge/webBridge';
-import { setRouterNavigate } from './bridge/webBridge';
+import { webBridge, setRouterNavigate } from './bridge/webBridge';
 import { routes } from './routes';
 
 /** Wires React Router's navigate function into the web bridge. */
@@ -43,7 +42,7 @@ export function App() {
                 path="/"
                 element={
                   <div style={{ padding: 24 }}>
-                    <h1>WPF → React Hybrid App</h1>
+                    <h1>WPF &rarr; React Hybrid App</h1>
                     <p>Select a page from the sidebar.</p>
                   </div>
                 }

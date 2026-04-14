@@ -1,0 +1,50 @@
+<Window x:Class="WpfReactHost.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WPF React Host — Navigation Hub"
+        Width="480" Height="360"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="WPF ➜ React Hybrid Migration"
+                   FontSize="20" FontWeight="Bold" />
+
+        <!-- Open Content Page A -->
+        <GroupBox Grid.Row="2" Header="Content Page A" Padding="8" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Customer ID:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox x:Name="CustomerIdBox" Width="80" Text="42"
+                         VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Content="Open Page A" Click="OpenPageA_Click" Padding="12,4" />
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Open Content Page B -->
+        <GroupBox Grid.Row="3" Header="Content Page B" Padding="8" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Order ID:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox x:Name="OrderIdBox" Width="80" Text="789"
+                         VerticalAlignment="Center" Margin="0,0,12,0" />
+                <CheckBox x:Name="ReadonlyCheck" Content="Read-only"
+                          VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Content="Open Page B" Click="OpenPageB_Click" Padding="12,4" />
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Status -->
+        <TextBlock Grid.Row="5" x:Name="StatusText"
+                   Text="Ready. Open a React page above."
+                   Foreground="Gray" FontStyle="Italic" />
+    </Grid>
+</Window>
