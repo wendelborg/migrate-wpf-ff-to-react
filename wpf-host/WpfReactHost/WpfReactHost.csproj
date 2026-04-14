@@ -86,7 +86,9 @@
     <None Include="App.config" />
   </ItemGroup>
 
-  <!-- Copy the React WebView build output into the bin folder at build time -->
+  <!-- Copy the React WebView build output into the bin folder at build time.
+       The glob is re-evaluated on every build so files dropped into wwwroot
+       by the copy-react-bundle script are picked up automatically. -->
   <ItemGroup>
     <Content Include="wwwroot\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -99,4 +101,58 @@
   </ItemGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <!-- Automatically build the React WebView bundle and copy it into wwwroot
+       before the C# compile step. This means developers only need to build
+       the WPF project - no separate script run required, provided Node.js
+       is installed. If npm is not on PATH the target is skipped with a
+       warning so the build does not fail. -->
+  <PropertyGroup>
+    <ReactAppDir>$(MSBuildThisFileDirectory)..\..\react-app</ReactAppDir>
+    <ReactBundleOutDir>$(MSBuildThisFileDirectory)wwwroot</ReactBundleOutDir>
+  </PropertyGroup>
+
+  <Target Name="BuildReactBundle"
+          BeforeTargets="BeforeBuild"
+          Inputs="$(ReactAppDir)\src\**\*;$(ReactAppDir)\public\**\*;$(ReactAppDir)\package.json;$(ReactAppDir)\vite.webview.config.ts"
+          Outputs="$(ReactBundleOutDir)\pages.js">
+    <Exec Command="where npm"
+          ContinueOnError="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="NpmExitCode" />
+    </Exec>
+
+    <Warning Condition=" '$(NpmExitCode)' != '0' "
+             Text="npm not found on PATH. Skipping React bundle build. Run scripts\copy-react-bundle.ps1 manually, then rebuild." />
+
+    <Message Condition=" '$(NpmExitCode)' == '0' "
+             Text="Building React WebView bundle..."
+             Importance="high" />
+
+    <Exec Condition=" '$(NpmExitCode)' == '0' "
+          Command="npm install"
+          WorkingDirectory="$(ReactAppDir)"
+          ConsoleToMSBuild="true" />
+
+    <Exec Condition=" '$(NpmExitCode)' == '0' "
+          Command="npm run build:webview"
+          WorkingDirectory="$(ReactAppDir)"
+          ConsoleToMSBuild="true" />
+
+    <MakeDir Condition=" '$(NpmExitCode)' == '0' "
+             Directories="$(ReactBundleOutDir)" />
+
+    <ItemGroup Condition=" '$(NpmExitCode)' == '0' ">
+      <_ReactBundleFiles Include="$(ReactAppDir)\dist-webview\**\*" />
+      <_ReactShellFile Include="$(ReactAppDir)\public\shell.html" />
+    </ItemGroup>
+
+    <Copy Condition=" '$(NpmExitCode)' == '0' "
+          SourceFiles="@(_ReactBundleFiles)"
+          DestinationFiles="@(_ReactBundleFiles->'$(ReactBundleOutDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <Copy Condition=" '$(NpmExitCode)' == '0' "
+          SourceFiles="@(_ReactShellFile)"
+          DestinationFolder="$(ReactBundleOutDir)" />
+  </Target>
 </Project>

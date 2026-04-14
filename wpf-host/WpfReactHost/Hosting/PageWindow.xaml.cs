@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -12,13 +13,19 @@ namespace WpfReactHost.Hosting
     /// A WPF window that hosts a single React page inside a WebView2 control.
     ///
     /// Each navigation request creates a new PageWindow. The window:
-    ///   1. Loads shell.html (which includes the IIFE pages.js bundle).
-    ///   2. After load, calls window.__mountPage(pageName, 'root', props).
-    ///   3. Listens for messages from React and raises events so the
+    ///   1. Maps the local wwwroot folder to a virtual host (https://appassets/)
+    ///      so that WebView2 can load local files without the security
+    ///      restrictions that come with file:// URIs.
+    ///   2. Loads shell.html which includes the IIFE pages.js bundle.
+    ///   3. After load, calls window.__mountPage(pageName, 'root', props).
+    ///   4. Listens for messages from React and raises events so the
     ///      WindowManager can handle navigation and cross-window broadcast.
     /// </summary>
     public partial class PageWindow : Window
     {
+        private const string VirtualHostName = "appassets.wpfreacthost";
+        private const string ShellUri = "https://" + VirtualHostName + "/shell.html";
+
         private readonly string _pageName;
         private readonly Dictionary<string, object> _initialProps;
 
@@ -45,27 +52,71 @@ namespace WpfReactHost.Hosting
 
         private async void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
-            await WebView.EnsureCoreWebView2Async(null);
+            // Verify the wwwroot folder exists before we even try to load it.
+            // This catches the common case of forgetting to run the
+            // copy-react-bundle script.
+            string wwwRoot = GetWwwRootPath();
+            if (!Directory.Exists(wwwRoot))
+            {
+                ShowError(
+                    "wwwroot folder not found.\n\n" +
+                    "Expected at:\n" + wwwRoot + "\n\n" +
+                    "Run scripts/copy-react-bundle.ps1 (or .sh) from the repo " +
+                    "root to build the React WebView bundle and copy it into " +
+                    "the WPF project, then rebuild.");
+                return;
+            }
 
-            // Block unexpected navigations (anchor clicks that slip through React)
+            string shellFile = Path.Combine(wwwRoot, "shell.html");
+            if (!File.Exists(shellFile))
+            {
+                ShowError("shell.html not found in wwwroot.\nPath: " + shellFile);
+                return;
+            }
+
+            try
+            {
+                await WebView.EnsureCoreWebView2Async(null);
+            }
+            catch (Exception ex)
+            {
+                ShowError(
+                    "WebView2 failed to initialize. Make sure the Evergreen " +
+                    "WebView2 Runtime is installed.\n\n" + ex.Message);
+                return;
+            }
+
+            // Map the local wwwroot folder to a virtual https host. This is
+            // the recommended pattern for serving local assets to WebView2 —
+            // it avoids the quirky restrictions that apply to file:// pages
+            // (e.g. script MIME sniffing, blocked modules, postMessage origin).
+            WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                VirtualHostName,
+                wwwRoot,
+                CoreWebView2HostResourceAccessKind.Allow);
+
+            // Diagnostic: mirror console output to Debug so you can see React
+            // errors in the Visual Studio Output window.
+            WebView.CoreWebView2.WebResourceResponseReceived += (s, args) =>
+            {
+                Debug.WriteLine(string.Format(
+                    "[WebView2] {0} -> {1}",
+                    args.Request.Uri, args.Response.StatusCode));
+            };
+
             WebView.CoreWebView2.NavigationStarting += OnNavigationStarting;
-
-            // Listen for messages posted by React via window.chrome.webview.postMessage
             WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-
-            // Once the shell + pages.js have loaded, mount the requested page
             WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
-            // Navigate to the local shell.html
-            string shellPath = GetShellPath();
-            WebView.CoreWebView2.Navigate(new Uri(shellPath).AbsoluteUri);
+            WebView.CoreWebView2.Navigate(ShellUri);
         }
 
         private async void OnNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             if (!e.IsSuccess)
             {
-                LoadingText.Text = "Failed to load shell.html";
+                ShowError(string.Format(
+                    "Failed to load shell.html.\nWebErrorStatus: {0}", e.WebErrorStatus));
                 return;
             }
 
@@ -115,7 +166,7 @@ namespace WpfReactHost.Hosting
 
         private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
-            // Only allow the initial file:// load and devtools
+            // Only allow the virtual host, file:// (dev fallback), and about:
             if (!IsAllowedNavigation(e.Uri))
             {
                 e.Cancel = true;
@@ -124,7 +175,8 @@ namespace WpfReactHost.Hosting
 
         private static bool IsAllowedNavigation(string uri)
         {
-            return uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+            return uri.StartsWith("https://" + VirtualHostName, StringComparison.OrdinalIgnoreCase)
+                || uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
                 || uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase);
         }
 
@@ -150,11 +202,18 @@ namespace WpfReactHost.Hosting
         // Helpers
         // -------------------------------------------------------------------
 
-        private static string GetShellPath()
+        private void ShowError(string message)
         {
-            // In the build output, wwwroot/ contains shell.html + pages.js
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            return Path.Combine(baseDir, "wwwroot", "shell.html");
+            LoadingText.Text = message;
+            LoadingText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            LoadingText.TextWrapping = TextWrapping.Wrap;
+            LoadingText.MaxWidth = 520;
+            Debug.WriteLine("[PageWindow] " + message);
+        }
+
+        private static string GetWwwRootPath()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
         }
 
         private static string GetPayloadString(Dictionary<string, object> payload, string key)
