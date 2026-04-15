@@ -11,26 +11,25 @@ namespace WpfReactHost.Hosting
     /// - <see cref="Navigate"/> opens a new window (like router.push).
     /// - <see cref="Broadcast"/> relays messages to every other window
     ///   (like eventBus.emit, but across separate JS contexts).
-    ///
-    /// Eventually, when the WPF host is retired, these responsibilities move
-    /// entirely into the React SPA and this class is deleted.
     /// </summary>
     public class WindowManager
     {
         private readonly List<PageWindow> _windows = new List<PageWindow>();
 
-        /// <summary>Open a new window that mounts the named React page.</summary>
-        public void Navigate(string page, Dictionary<string, object> props)
+        /// <summary>
+        /// Open a new window displaying the named React page. The logical
+        /// page name + props are translated to a URL under
+        /// <see cref="AppSettings.ReactAppBaseUrl"/>.
+        /// </summary>
+        public void Navigate(string pageName, Dictionary<string, object> props)
         {
-            var window = new PageWindow(page, props);
+            string path = PageRouter.BuildPath(pageName, props);
+            string url = AppSettings.ReactAppBaseUrl + path;
 
-            // When React requests navigation, open another window
+            var window = new PageWindow(pageName, url);
+
             window.NavigateRequested += (route, parms) => Navigate(route, parms);
-
-            // When React sends a non-NAVIGATE message, relay to all other windows
             window.MessageReceived += (msg, sender) => Broadcast(msg, sender);
-
-            // Remove from tracking when the window is closed
             window.Closed += (s, e) => _windows.Remove(window);
 
             _windows.Add(window);

@@ -1,113 +1,141 @@
-# WPF → React Hybrid Migration Sample
+# WPF &rarr; React Hybrid Migration Sample
 
-A full working sample that demonstrates the incremental migration pattern:
-one React codebase serves as **both** embedded pages inside a .NET Framework
-4.8 WPF application (via WebView2) **and** a standalone browser SPA.
+A working sample showing how to incrementally migrate a WPF app to React.
+One React codebase is consumed two ways simultaneously:
+
+- As a standalone SPA in the browser (`npm run dev`)
+- As embedded pages inside a .NET Framework 4.8 WPF app (via WebView2)
+
+The WPF host **does not serve the React bundle itself**. It just points each
+WebView2 at the URL where the React app is already running (dev server or
+deployed URL). This means you get hot reload inside WPF during development
+and a single deployment artifact in production.
 
 ## Repository Layout
 
 ```
 .
-├── react-app/              # React + Vite project (TS)
+├── react-app/                          # React + Vite + TypeScript (the SPA)
 │   ├── src/
-│   │   ├── bridge/         # AppBridge abstraction (wpfBridge + webBridge)
-│   │   ├── pages/          # Page registry + example pages
-│   │   ├── App.tsx         # SPA shell (React Router)
-│   │   ├── main.tsx        # SPA entry
-│   │   └── mount.ts        # WebView IIFE entry
-│   ├── public/shell.html   # HTML shell loaded by WebView2
-│   ├── vite.config.ts
-│   └── vite.webview.config.ts
+│   │   ├── bridge/                     # AppBridge abstraction
+│   │   │   ├── types.ts                # BridgeMessage union, AppBridge interface
+│   │   │   ├── webBridge.ts            # SPA: React Router + event bus
+│   │   │   ├── wpfBridge.ts            # Embedded: chrome.webview.postMessage
+│   │   │   ├── eventBus.ts
+│   │   │   ├── BridgeContext.tsx
+│   │   │   └── index.ts                # getBridge(), isEmbedded()
+│   │   ├── pages/
+│   │   │   ├── ContentPageA/ContentPageA.tsx
+│   │   │   └── ContentPageB/ContentPageB.tsx
+│   │   ├── App.tsx                     # Auto-detects embedded/SPA, hides chrome in embedded
+│   │   ├── main.tsx
+│   │   └── routes.tsx
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
 │
-├── wpf-host/               # .NET Framework 4.8 WPF solution
-│   ├── WpfReactHost.sln
-│   └── WpfReactHost/
-│       ├── App.xaml(.cs)
-│       ├── MainWindow.xaml(.cs)     # Navigation hub UI
-│       ├── Hosting/
-│       │   ├── PageWindow.xaml(.cs) # Hosts one React page per window
-│       │   └── WindowManager.cs     # Window tracker + message bus
-│       ├── Bridge/BridgeMessage.cs  # Typed message envelope
-│       └── WpfReactHost.csproj      # net48, PackageReference style
-│
-└── scripts/
-    ├── copy-react-bundle.sh         # Build React + copy to wwwroot
-    └── copy-react-bundle.ps1        # Windows equivalent
+└── wpf-host/                           # .NET Framework 4.8 WPF solution
+    ├── WpfReactHost.sln
+    └── WpfReactHost/
+        ├── App.xaml(.cs)               # Application entry
+        ├── App.config                  # ReactAppBaseUrl setting
+        ├── AppSettings.cs              # Typed accessor for appSettings
+        ├── MainWindow.xaml(.cs)        # Navigation hub UI
+        ├── Hosting/
+        │   ├── PageRouter.cs           # page name + props -> URL path
+        │   ├── PageWindow.xaml(.cs)    # WebView2 pointed at {baseUrl}{path}
+        │   └── WindowManager.cs        # Tracks windows + relays messages
+        ├── Bridge/BridgeMessage.cs     # Newtonsoft.Json envelope
+        ├── Properties/AssemblyInfo.cs
+        ├── packages.config
+        └── WpfReactHost.csproj
 ```
+
+## How it works
+
+```
+┌──────────── WPF MainWindow ──────────────────────────┐
+│  [Open Page A]  [Open Page B]                        │
+└──────────────────────┬───────────────────────────────┘
+                       │ _windowManager.Navigate("ContentPageA", {customerId:42})
+                       ▼
+               ┌─ WindowManager ──────────┐
+               │  PageRouter.BuildPath    │  -> "/content-a?customerId=42"
+               │  + AppSettings.BaseUrl   │
+               └──────────┬───────────────┘
+                          │ new PageWindow(url)
+                          ▼
+          ┌─ PageWindow (WebView2) ─────────────┐
+          │  Navigate:                          │
+          │    http://localhost:5173/content-a  │
+          │           ?customerId=42            │
+          └──────────┬──────────────────────────┘
+                     │
+      React Router picks up the URL
+                     │
+                     ▼
+           ContentPageA renders, reads
+           customerId from useSearchParams.
+```
+
+The React page calls `useBridge()` to get either `wpfBridge` or `webBridge`
+depending on whether `window.chrome?.webview` exists:
+
+- **In WPF**: `bridge.navigate(...)` posts a NAVIGATE message that WPF's
+  `PageWindow` relays to `WindowManager`, which opens a new WebView2 window
+  at the new URL. `bridge.send(...)` posts arbitrary messages that WPF
+  broadcasts to every other open window.
+- **In SPA**: `bridge.navigate(...)` calls React Router's `navigate()` and
+  `bridge.send(...)` goes through an in-process event bus.
+
+Pages never know which host they're in.
 
 ## Build & Run
 
-### 1. Build the React SPA (browser only)
+### React SPA (standalone, no WPF)
 
 ```bash
 cd react-app
 npm install
-npm run dev         # http://localhost:5173  (SPA, web bridge)
-npm run build       # dist/
+npm run dev      # http://localhost:5173
 ```
 
-### 2. Build the React WebView bundle and copy into WPF project
+### WPF host (uses whatever URL is in App.config)
 
-From the repo root:
+1. Make sure the React app is running (`npm run dev`) or that
+   `ReactAppBaseUrl` in `wpf-host/WpfReactHost/App.config` points at a
+   reachable deployment.
+2. Open `wpf-host/WpfReactHost.sln` in Visual Studio 2019+ with the
+   .NET Framework 4.8 targeting pack and the WebView2 Runtime installed.
+3. **F5**. From the main window, open pages — each opens a new WebView2
+   window that navigates to the React URL.
 
-```bash
-./scripts/copy-react-bundle.sh     # macOS/Linux
-# or:
-pwsh ./scripts/copy-react-bundle.ps1   # Windows
+### Configuring the React URL
+
+Edit `wpf-host/WpfReactHost/App.config`:
+
+```xml
+<appSettings>
+  <add key="ReactAppBaseUrl" value="http://localhost:5173" />  <!-- dev -->
+  <!-- or -->
+  <add key="ReactAppBaseUrl" value="https://apps.contoso.com/myapp" />  <!-- prod -->
+</appSettings>
 ```
-
-This produces `wpf-host/WpfReactHost/wwwroot/` containing `shell.html`
-and `pages.js`, which the WebView2 loads at runtime.
-
-### 3. Build and run the WPF host
-
-Open `wpf-host/WpfReactHost.sln` in Visual Studio (2019 or later with .NET
-Framework 4.8 targeting pack and the WebView2 Runtime installed), then
-**F5** to run.
-
-From the main window you can open new React pages in fresh WebView2 windows
-and pass initial props.
-
-## How the hybrid works
-
-```
-┌─ MainWindow ──────────────────────┐
-│  [Open Page A]  [Open Page B]     │
-└───────────┬───────────────────────┘
-            │ Navigate("ContentPageA", {...})
-            ▼
-     ┌─ WindowManager ─┐
-     │  List<PageWindow>
-     │  Broadcast(msg)
-     └────────┬────────┘
-              │ new PageWindow(...)
-              ▼
-   ┌─ PageWindow (WebView2) ─┐          React page calls
-   │  shell.html             │  ◀──────  bridge.navigate(...)
-   │  pages.js (IIFE)        │  ──────▶  window.chrome.webview.postMessage
-   │  __mountPage(page,...)  │
-   └─────────────────────────┘
-```
-
-The `AppBridge` interface (`react-app/src/bridge/types.ts`) is the contract
-between React pages and their host. There are two implementations:
-
-- `wpfBridge` — posts to `window.chrome.webview` (used when embedded)
-- `webBridge` — uses React Router + an in-process event bus (used in the SPA)
-
-Pages use `useBridge()` without knowing which one is active.
 
 ## Adding a new page
 
 1. Create `react-app/src/pages/MyNewPage/MyNewPage.tsx`.
-2. Create `react-app/src/pages/MyNewPage/index.ts` with:
-   ```ts
-   import { registerPage } from '../registry';
-   import { MyNewPage } from './MyNewPage';
-   registerPage('MyNewPage', MyNewPage);
+2. Add a route in `react-app/src/routes.tsx`:
+   ```tsx
+   { path: '/my-new-page', element: <MyNewPage /> }
    ```
-3. Import the new folder in `react-app/src/pages/index.ts`.
-4. Add a route in `react-app/src/routes.tsx`.
-5. In WPF, call `_windowManager.Navigate("MyNewPage", props)` from anywhere.
-
-No other changes required — the page is automatically available in both hosts.
+3. In `wpf-host/WpfReactHost/Hosting/PageRouter.cs`, add the mapping:
+   ```csharp
+   { "MyNewPage", "/my-new-page" },
+   ```
+4. Call it from WPF:
+   ```csharp
+   _windowManager.Navigate("MyNewPage", props);
+   ```
+   or from another React page via `bridge.navigate('MyNewPage', ...)`.

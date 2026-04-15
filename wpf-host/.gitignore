@@ -5,6 +5,3 @@ obj/
 *.suo
 .vs/
 packages/
-
-# React WebView2 bundle copied in by copy-react-bundle script
-WpfReactHost/wwwroot/

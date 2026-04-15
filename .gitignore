@@ -11,13 +11,9 @@ node_modules/
 
 # React build output
 react-app/dist/
-react-app/dist-webview/
 react-app/*.tsbuildinfo
 
 # .NET build output
 [Bb]in/
 [Oo]bj/
 packages/
-
-# Copied React bundle inside the WPF project
-wpf-host/WpfReactHost/wwwroot/

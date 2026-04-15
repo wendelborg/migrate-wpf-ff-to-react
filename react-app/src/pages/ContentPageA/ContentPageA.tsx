@@ -1,13 +1,14 @@
 import { useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useBridge, useBridgeEvent, type BridgeMessage } from '../../bridge';
 
-interface ContentPageAProps {
-  customerId?: number;
-}
-
-export function ContentPageA({ customerId }: ContentPageAProps) {
+export function ContentPageA() {
   const bridge = useBridge();
+  const [searchParams] = useSearchParams();
   const [lastEvent, setLastEvent] = useState<string>('(none)');
+
+  const customerIdParam = searchParams.get('customerId');
+  const customerId = customerIdParam !== null ? Number(customerIdParam) : undefined;
 
   const openOrder = (orderId: number) => {
     bridge.navigate('ContentPageB', { orderId });
