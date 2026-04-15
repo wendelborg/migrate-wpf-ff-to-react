@@ -2,7 +2,8 @@
 export type BridgeMessage =
   | { type: 'NAVIGATE'; payload: { route: string; params?: Record<string, unknown> } }
   | { type: 'ORDER_SELECTED'; payload: { orderId: number } }
-  | { type: 'CUSTOMER_CHANGED'; payload: { customerId: number } };
+  | { type: 'CUSTOMER_CHANGED'; payload: { customerId: number } }
+  | { type: 'SHOW_MESSAGE_BOX'; payload: { title: string; message: string } };
 
 /**
  * Abstraction over the host environment.

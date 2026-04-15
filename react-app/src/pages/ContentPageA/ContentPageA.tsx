@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBridge, useBridgeEvent, type BridgeMessage } from '../../bridge';
 
@@ -14,6 +14,17 @@ export function ContentPageA() {
     bridge.navigate('ContentPageB', { orderId });
   };
 
+  const showWpfMessageBox = (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    bridge.send({
+      type: 'SHOW_MESSAGE_BOX',
+      payload: {
+        title: 'Hello from React',
+        message: 'This native dialog was opened by a link in the React app.',
+      },
+    });
+  };
+
   const handleEvent = useCallback((event: BridgeMessage) => {
     setLastEvent(`${event.type}: ${JSON.stringify(event.payload)}`);
   }, []);
@@ -27,6 +38,19 @@ export function ContentPageA() {
 
       <button onClick={() => openOrder(789)}>Open Order 789</button>
       <button onClick={() => openOrder(101)}>Open Order 101</button>
+
+      <hr />
+      <h3>Native Host Dialog</h3>
+      <p>
+        <a href="#show-message-box" onClick={showWpfMessageBox}>
+          Click here to open a WPF MessageBox
+        </a>
+      </p>
+      <p style={{ fontSize: 12, color: '#666' }}>
+        When running inside the WPF host, this posts a SHOW_MESSAGE_BOX message
+        that WPF intercepts and renders as a native <code>MessageBox</code>.
+        In the standalone SPA it just broadcasts on the in-process event bus.
+      </p>
 
       <hr />
       <h3>Bridge Events</h3>
