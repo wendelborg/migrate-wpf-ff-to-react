@@ -2,25 +2,42 @@ import type { NavigateFunction } from 'react-router-dom';
 import { eventBus } from './eventBus';
 import type { AppBridge } from './types';
 
-/** Map page names used in the registry to URL paths. */
+/**
+ * Map page names to route templates. Templates use React Router-style
+ * `:param` placeholders; props whose keys match a placeholder are consumed
+ * as path segments, and any remaining props become query-string entries.
+ * Kept in sync with PageRouter.cs on the WPF side.
+ */
 const PAGE_ROUTES: Record<string, string> = {
   ContentPageA: '/content-a',
-  ContentPageB: '/content-b',
+  ContentPageB: '/content-b/:orderId',
 };
 
 function buildPath(route: string, params?: Record<string, unknown>): string {
-  const base = PAGE_ROUTES[route] ?? `/${route}`;
-  if (!params) return base;
+  const template = PAGE_ROUTES[route] ?? `/${route}`;
+  const remaining: Record<string, unknown> = { ...(params ?? {}) };
 
-  // Append known path segments (e.g. orderId -> /content-b/789)
-  const orderId = params['orderId'];
-  if (orderId !== undefined) return `${base}/${String(orderId)}`;
+  const segments = template.split('/').flatMap((segment) => {
+    if (segment.startsWith(':')) {
+      const key = segment.slice(1);
+      const value = remaining[key];
+      if (value !== undefined && value !== null) {
+        delete remaining[key];
+        return [encodeURIComponent(String(value))];
+      }
+      return []; // unmatched placeholder: drop the segment
+    }
+    return [segment];
+  });
 
-  // Fall back to query string for other params
-  const qs = new URLSearchParams(
-    Object.entries(params).map(([k, v]) => [k, String(v)]),
-  ).toString();
-  return qs ? `${base}?${qs}` : base;
+  const path = segments.join('/') || '/';
+
+  const qsEntries = Object.entries(remaining)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => [k, String(v)] as [string, string]);
+  const qs = qsEntries.length ? `?${new URLSearchParams(qsEntries).toString()}` : '';
+
+  return path + qs;
 }
 
 // ---- router hook wiring ----
