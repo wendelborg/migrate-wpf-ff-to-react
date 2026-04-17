@@ -63,6 +63,7 @@ export function App() {
               <h3>Navigation</h3>
               <Link to="/content-a">Content A</Link>
               <Link to="/content-b/789">Content B (Order 789)</Link>
+              <Link to="/groupable-table">Groupable Table</Link>
             </nav>
             <main style={{ flex: 1 }}>
               <AppRoutes />
