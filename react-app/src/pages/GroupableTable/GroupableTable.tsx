@@ -1,4 +1,4 @@
-import { useState, useCallback, Fragment, type ReactNode } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -201,6 +201,7 @@ function GroupByBand({
   return (
     <div
       ref={setNodeRef}
+      data-testid="group-band"
       style={{
         minHeight: 48,
         padding: '8px 12px',
@@ -316,52 +317,50 @@ export function GroupableTable() {
     }
   }
 
-  function renderRows(rows: Row<Order>[], depth: number): ReactNode {
-    return rows.map((row) => {
-      if (row.getIsGrouped()) {
-        const colId = row.groupingColumnId ?? '';
-        return (
-          <Fragment key={row.id}>
-            <tr
-              style={{ backgroundColor: depth % 2 === 0 ? '#e8eaf6' : '#ede7f6', cursor: 'pointer' }}
-              onClick={row.getToggleExpandedHandler()}
-            >
-              <td
-                colSpan={colCount}
-                style={{ padding: '6px 12px', paddingLeft: 12 + depth * 20, fontWeight: 600 }}
-              >
-                <span style={{ marginRight: 8, fontSize: 11 }}>
-                  {row.getIsExpanded() ? '▼' : '▶'}
-                </span>
-                {columnLabels[colId] ?? colId}: {String(row.groupingValue)}
-                <span style={{ marginLeft: 8, color: '#6b7280', fontWeight: 400, fontSize: 13 }}>
-                  ({row.subRows.length})
-                </span>
-              </td>
-            </tr>
-            {row.getIsExpanded() && renderRows(row.subRows, depth + 1)}
-          </Fragment>
-        );
-      }
-
+  // getExpandedRowModel already flattens the visible tree into a plain list —
+  // use row.depth for indentation instead of recursing into subRows manually.
+  function renderRow(row: Row<Order>): ReactNode {
+    if (row.getIsGrouped()) {
+      const colId = row.groupingColumnId ?? '';
       return (
-        <tr key={row.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-          {row.getVisibleCells().map((cell, cellIndex) => (
-            <td
-              key={cell.id}
-              style={{
-                padding: '6px 12px',
-                paddingLeft: cellIndex === 0 ? 12 + depth * 20 : 12,
-              }}
-            >
-              {cell.getIsPlaceholder()
-                ? null
-                : flexRender(cell.column.columnDef.cell, cell.getContext())}
-            </td>
-          ))}
+        <tr
+          key={row.id}
+          style={{ backgroundColor: row.depth % 2 === 0 ? '#e8eaf6' : '#ede7f6', cursor: 'pointer' }}
+          onClick={row.getToggleExpandedHandler()}
+        >
+          <td
+            colSpan={colCount}
+            style={{ padding: '6px 12px', paddingLeft: 12 + row.depth * 20, fontWeight: 600 }}
+          >
+            <span style={{ marginRight: 8, fontSize: 11 }}>
+              {row.getIsExpanded() ? '▼' : '▶'}
+            </span>
+            {columnLabels[colId] ?? colId}: {String(row.groupingValue)}
+            <span style={{ marginLeft: 8, color: '#6b7280', fontWeight: 400, fontSize: 13 }}>
+              ({row.subRows.length})
+            </span>
+          </td>
         </tr>
       );
-    });
+    }
+
+    return (
+      <tr key={row.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+        {row.getVisibleCells().map((cell, cellIndex) => (
+          <td
+            key={cell.id}
+            style={{
+              padding: '6px 12px',
+              paddingLeft: cellIndex === 0 ? 12 + row.depth * 20 : 12,
+            }}
+          >
+            {cell.getIsPlaceholder()
+              ? null
+              : flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        ))}
+      </tr>
+    );
   }
 
   return (
@@ -388,7 +387,7 @@ export function GroupableTable() {
               ))}
             </thead>
             <tbody>
-              {renderRows(table.getRowModel().rows, 0)}
+              {table.getRowModel().rows.map(renderRow)}
             </tbody>
           </table>
         </div>
