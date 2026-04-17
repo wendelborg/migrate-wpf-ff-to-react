@@ -3,3 +3,5 @@ dist/
 dist-webview/
 *.local
 *.tsbuildinfo
+test-results/
+playwright-report/
