@@ -1,11 +1,11 @@
-import { useCallback, useState, type MouseEvent } from 'react';
+import { useCallback, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useBridge, useBridgeEvent, type BridgeMessage } from '../../bridge';
+import { useBridge, useLastBridgeEvent } from '../../bridge';
 
 export function ContentPageA() {
   const bridge = useBridge();
   const [searchParams] = useSearchParams();
-  const [lastEvent, setLastEvent] = useState<string>('(none)');
+  const lastEvent = useLastBridgeEvent();
 
   const customerIdParam = searchParams.get('customerId');
   const customerId = customerIdParam !== null ? Number(customerIdParam) : undefined;
@@ -14,7 +14,7 @@ export function ContentPageA() {
     bridge.navigate('ContentPageB', { orderId });
   };
 
-  const showWpfMessageBox = (e: MouseEvent<HTMLAnchorElement>) => {
+  const showWpfMessageBox = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     bridge.send({
       type: 'SHOW_MESSAGE_BOX',
@@ -23,13 +23,7 @@ export function ContentPageA() {
         message: 'This native dialog was opened by a link in the React app.',
       },
     });
-  };
-
-  const handleEvent = useCallback((event: BridgeMessage) => {
-    setLastEvent(`${event.type}: ${JSON.stringify(event.payload)}`);
-  }, []);
-
-  useBridgeEvent(handleEvent);
+  }, [bridge]);
 
   return (
     <div style={{ padding: 24 }}>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { BridgeProvider, getBridge, isEmbedded } from './bridge';
+import { BridgeProvider, isEmbedded, webBridge, wpfBridge } from './bridge';
 import { setRouterNavigate } from './bridge/webBridge';
 import { routes } from './routes';
 
@@ -34,8 +34,8 @@ function AppRoutes() {
 }
 
 export function App() {
-  const bridge = getBridge();
   const embedded = isEmbedded();
+  const bridge = embedded ? wpfBridge : webBridge;
 
   return (
     <BridgeProvider bridge={bridge}>

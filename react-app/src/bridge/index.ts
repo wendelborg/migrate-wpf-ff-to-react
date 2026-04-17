@@ -18,4 +18,5 @@ export function getBridge(): AppBridge {
 
 export { BridgeProvider, useBridge, useBridgeEvent };
 export { webBridge, wpfBridge };
+export { useLastBridgeEvent } from './useLastBridgeEvent';
 export type { AppBridge, BridgeMessage } from './types';
