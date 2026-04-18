@@ -63,6 +63,11 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
 
 const NO_FILTERS: ColumnFiltersState = [];
 
+// Estimated pixel heights for the virtualizer. Derived from padding (6px top+bottom)
+// plus line height. Group rows are slightly taller due to the expand indicator.
+const GROUP_ROW_HEIGHT = 40;
+const DATA_ROW_HEIGHT = 37;
+
 const COLUMNS: ColumnDef<Order>[] = [
   { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true, filterFn: 'includesString' },
   { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true, filterFn: 'includesString' },
@@ -80,6 +85,18 @@ const COLUMNS: ColumnDef<Order>[] = [
     aggregatedCell: ({ getValue }) => `$${getValue<number>().toFixed(2)}`,
   },
 ];
+
+function getColumnLabel(header: ColumnDef<Order>['header'], columnId: string): string {
+  return typeof header === 'string' && header.length > 0 ? header : columnId;
+}
+
+const COLUMN_LABELS: Record<string, string> = Object.fromEntries(
+  COLUMNS.map((col) => [col.id!, getColumnLabel(col.header, col.id!)]),
+);
+
+const GROUPABLE_COLUMN_IDS: string[] = COLUMNS
+  .filter((col) => col.enableGrouping !== false)
+  .map((col) => col.id!);
 
 // ---------------------------------------------------------------------------
 // DraggableHeader
@@ -106,9 +123,7 @@ function DraggableHeader({
   });
 
   const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
-  const colLabel = typeof header.column.columnDef.header === 'string'
-    ? header.column.columnDef.header
-    : header.column.id;
+  const colLabel = getColumnLabel(header.column.columnDef.header, header.column.id);
 
   return (
     <th
@@ -340,17 +355,6 @@ export function GroupableTable() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grouping]);
 
-  const columnLabels = Object.fromEntries(
-    table.getAllColumns().map((col) => {
-      const h = col.columnDef.header;
-      return [col.id, typeof h === 'string' && h.length > 0 ? h : col.id] as [string, string];
-    }),
-  );
-
-  const groupableColumns = table.getAllLeafColumns().filter(
-    (col) => col.columnDef.enableGrouping !== false,
-  );
-
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
   const activeFilterCount = showFilters ? columnFilters.length : 0;
@@ -358,7 +362,7 @@ export function GroupableTable() {
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
-    estimateSize: (index) => (rows[index]?.getIsGrouped() ? 40 : 37),
+    estimateSize: (index) => (rows[index]?.getIsGrouped() ? GROUP_ROW_HEIGHT : DATA_ROW_HEIGHT),
     overscan: 10,
   });
 
@@ -435,7 +439,7 @@ export function GroupableTable() {
             <span style={{ marginRight: 8, fontSize: 11 }}>
               {row.getIsExpanded() ? '▼' : '▶'}
             </span>
-            {columnLabels[colId] ?? colId}: {String(row.groupingValue)}
+            {COLUMN_LABELS[colId] ?? colId}: {String(row.groupingValue)}
             <span style={{ marginLeft: 8, color: '#6b7280', fontWeight: 400, fontSize: 13 }}>
               ({row.subRows.length})
             </span>
@@ -472,7 +476,7 @@ export function GroupableTable() {
       </p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
+        <GroupByBand grouping={grouping} columnLabels={COLUMN_LABELS} onRemove={handleRemoveGrouping} />
 
         {/* Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 6 }}>
@@ -559,14 +563,14 @@ export function GroupableTable() {
               backgroundColor: '#fff',
             }}
           >
-            {groupableColumns.map((col, i) => {
-              const label = columnLabels[col.id] ?? col.id;
-              const active = grouping.includes(col.id);
+            {GROUPABLE_COLUMN_IDS.map((colId, i) => {
+              const label = COLUMN_LABELS[colId] ?? colId;
+              const active = grouping.includes(colId);
               return (
                 <button
-                  key={col.id}
-                  data-testid={`group-panel-toggle-${col.id}`}
-                  onClick={() => handleToggleGrouping(col.id)}
+                  key={colId}
+                  data-testid={`group-panel-toggle-${colId}`}
+                  onClick={() => handleToggleGrouping(colId)}
                   style={{
                     display: 'flex',
                     width: '100%',
