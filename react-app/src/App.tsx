@@ -1,13 +1,13 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { BridgeProvider, isEmbedded, webBridge, wpfBridge } from './bridge';
+import { BridgeProvider, isEmbedded, getBridge } from './bridge';
 import { setRouterNavigate } from './bridge/webBridge';
 import { routes } from './routes';
 
 /** Wires React Router's navigate function into the web bridge (SPA mode only). */
 function RouterSync() {
   const navigate = useNavigate();
-  useEffect(() => {
+  useLayoutEffect(() => {
     setRouterNavigate(navigate);
   }, [navigate]);
   return null;
@@ -35,7 +35,7 @@ function AppRoutes() {
 
 export function App() {
   const embedded = isEmbedded();
-  const bridge = embedded ? wpfBridge : webBridge;
+  const bridge = getBridge();
 
   return (
     <BridgeProvider bridge={bridge}>

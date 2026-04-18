@@ -4,7 +4,6 @@ import { GroupableTable } from './pages/GroupableTable';
 
 export const routes = [
   { path: '/content-a', element: <ContentPageA /> },
-  { path: '/content-b/:orderId', element: <ContentPageB /> },
-  { path: '/content-b', element: <ContentPageB /> },
+  { path: '/content-b/:orderId?', element: <ContentPageB /> },
   { path: '/groupable-table', element: <GroupableTable /> },
 ];
