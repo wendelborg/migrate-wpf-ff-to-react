@@ -103,6 +103,10 @@ function DraggableHeader({
 
   const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
 
+  const colLabel = typeof header.column.columnDef.header === 'string'
+    ? header.column.columnDef.header
+    : header.column.id;
+
   return (
     <th
       style={{
@@ -115,7 +119,7 @@ function DraggableHeader({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
-        {/* Drag handle — only rendered for groupable columns */}
+        {/* Drag handle — desktop only, narrow strip */}
         {canGroup && (
           <div
             ref={setNodeRef}
@@ -139,7 +143,7 @@ function DraggableHeader({
           </div>
         )}
 
-        {/* Sort button — label + indicator */}
+        {/* Sort button — label area, flex: 1 */}
         <button
           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
           style={{
@@ -155,7 +159,7 @@ function DraggableHeader({
             color: 'inherit',
             userSelect: 'none',
           }}
-          aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
+          aria-label={`Sort by ${colLabel}`}
         >
           {isGrouped && <span style={{ marginRight: 4, color: '#2563eb' }}>⊞</span>}
           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -166,24 +170,27 @@ function DraggableHeader({
           )}
         </button>
 
-        {/* Tap-to-group toggle — mobile-friendly alternative to drag */}
+        {/* Group toggle — full height, 44 px wide: standard mobile touch target */}
         {canGroup && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onToggleGrouping(header.column.id)}
             data-testid={`col-group-toggle-${header.column.id}`}
-            title={isGrouped ? 'Remove grouping' : 'Group by this column'}
-            aria-label={isGrouped ? `Remove ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id} grouping` : `Group by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
+            title={isGrouped ? `Remove ${colLabel} grouping` : `Group by ${colLabel}`}
+            aria-label={isGrouped ? `Remove ${colLabel} grouping` : `Group by ${colLabel}`}
             style={{
-              padding: '8px 8px',
-              background: 'none',
+              alignSelf: 'stretch',
+              minWidth: 44,
+              padding: '0 8px',
+              background: isGrouped ? '#bfdbfe' : 'none',
               border: 'none',
+              borderLeft: '1px solid #e5e7eb',
               cursor: 'pointer',
               color: isGrouped ? '#2563eb' : '#9ca3af',
-              fontSize: 14,
-              lineHeight: 1,
+              fontSize: 18,
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {isGrouped ? '⊟' : '⊞'}
