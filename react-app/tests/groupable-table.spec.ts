@@ -40,17 +40,17 @@ test.describe('GroupableTable', () => {
   test('screenshot: before and after nesting by Status then Category', async ({ page }) => {
     await page.screenshot({ path: 'tests/screenshots/01-before-grouping.png', fullPage: false });
 
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="group-band"]')).toContainText('Status');
     await page.screenshot({ path: 'tests/screenshots/02-grouped-by-status.png', fullPage: false });
 
-    await dragInto(page, 'th:has-text("Category")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-category"]', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="group-band"]')).toContainText('Category');
     await page.screenshot({ path: 'tests/screenshots/03-nested-status-category.png', fullPage: false });
   });
 
   // -------------------------------------------------------------------------
-  // Functional tests
+  // Functional tests — grouping
   // -------------------------------------------------------------------------
 
   test('renders 500 total rows with no grouping', async ({ page }) => {
@@ -66,7 +66,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('dragging a header to the band creates a grouping chip', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
 
     const band = page.locator('[data-testid="group-band"]');
     await expect(band).toContainText('Status');
@@ -74,7 +74,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('grouping shows group headers with correct labels', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
 
     // Active is always the first row — check it and its count badge
     await expect(page.locator('table tbody')).toContainText('Status: Active');
@@ -90,13 +90,13 @@ test.describe('GroupableTable', () => {
   });
 
   test('row-total updates to reflect visible rows after grouping', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
     // 3 group headers + 500 leaf rows = 503 visible rows in the flat model
     await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
   });
 
   test('clicking a group header collapses and expands its rows', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
 
     const totalBefore = await page.locator('[data-testid="row-total"]').innerText();
 
@@ -113,8 +113,8 @@ test.describe('GroupableTable', () => {
   });
 
   test('two-level nesting: group by Status then Category', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
-    await dragInto(page, 'th:has-text("Category")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-category"]', '[data-testid="group-band"]');
 
     const band = page.locator('[data-testid="group-band"]');
     await expect(band).toContainText('Status');
@@ -125,7 +125,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('removing a grouping chip restores flat rows', async ({ page }) => {
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
 
     await page.locator('[data-testid="group-band"] button[aria-label="Remove Status grouping"]').click();
@@ -137,18 +137,138 @@ test.describe('GroupableTable', () => {
   });
 
   test('ID and Amount headers are not draggable into the band', async ({ page }) => {
-    await dragInto(page, 'th:has-text("ID")', '[data-testid="group-band"]');
-    await expect(page.locator('[data-testid="group-band"]')).toContainText(
-      'Drag a column header here to group by that column',
-    );
+    // ID and Amount have no drag handle (enableGrouping: false)
+    await expect(page.locator('[data-testid="col-drag-id"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="col-drag-amount"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
   });
 
   test('grouped column header gets visual indicator', async ({ page }) => {
-    await expect(page.locator('th:has-text("⊞")')).toHaveCount(0);
+    // Before grouping: no column shows the ⊟ (remove) toggle — all show ⊞ (add)
+    await expect(page.locator('[data-testid="col-group-toggle-status"]')).toContainText('⊞');
 
-    await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
+    await dragInto(page, '[data-testid="col-drag-status"]', '[data-testid="group-band"]');
 
-    await expect(page.locator('th:has-text("⊞")')).toBeVisible();
+    // After grouping: Status toggle flips to ⊟, signalling it is the active group column
+    await expect(page.locator('[data-testid="col-group-toggle-status"]')).toContainText('⊟');
+  });
+
+  // -------------------------------------------------------------------------
+  // Mobile tap-to-group
+  // -------------------------------------------------------------------------
+
+  test('tap ⊞ button on mobile to add a grouping', async ({ page }) => {
+    await page.locator('[data-testid="col-group-toggle-status"]').click();
+
+    const band = page.locator('[data-testid="group-band"]');
+    await expect(band).toContainText('Status');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
+  });
+
+  test('tap ⊟ button removes the grouping', async ({ page }) => {
+    await page.locator('[data-testid="col-group-toggle-status"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
+
+    // After grouping, the button label flips to ⊟ (remove)
+    await page.locator('[data-testid="col-group-toggle-status"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+    await expect(page.locator('[data-testid="group-band"]')).toContainText(
+      'Drag a column header here to group by that column',
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Sorting
+  // -------------------------------------------------------------------------
+
+  test('clicking a column label sorts ascending then descending', async ({ page }) => {
+    // Click Customer label to sort ascending
+    await page.locator('button[aria-label="Sort by Customer"]').click();
+    // First visible leaf row should be "Acme Corp" (alphabetically first)
+    await expect(page.locator('table tbody tr').first()).toContainText('Acme Corp');
+
+    // Click again to sort descending
+    await page.locator('button[aria-label="Sort by Customer"]').click();
+    // First visible row should be "Waystar" (alphabetically last)
+    await expect(page.locator('table tbody tr').first()).toContainText('Waystar');
+  });
+
+  test('sort indicator appears on sorted column', async ({ page }) => {
+    // No sort indicators initially (only ⇅ neutral)
+    await expect(page.locator('button[aria-label="Sort by Customer"]')).toContainText('⇅');
+
+    await page.locator('button[aria-label="Sort by Customer"]').click();
+    await expect(page.locator('button[aria-label="Sort by Customer"]')).toContainText('↑');
+
+    await page.locator('button[aria-label="Sort by Customer"]').click();
+    await expect(page.locator('button[aria-label="Sort by Customer"]')).toContainText('↓');
+  });
+
+  test('sorting works alongside grouping', async ({ page }) => {
+    await page.locator('[data-testid="col-group-toggle-status"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
+
+    // Sort by amount descending — group headers remain present and total unchanged
+    await page.locator('button[aria-label="Sort by Amount"]').click();
+    await page.locator('button[aria-label="Sort by Amount"]').click();
+    await expect(page.locator('table tbody')).toContainText('Status:');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
+  });
+
+  // -------------------------------------------------------------------------
+  // Filtering
+  // -------------------------------------------------------------------------
+
+  test('filter toggle button shows and hides filter row', async ({ page }) => {
+    await expect(page.locator('[data-testid="filter-status"]')).toHaveCount(0);
+
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="filter-status"]')).toBeVisible();
+
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="filter-status"]')).toHaveCount(0);
+  });
+
+  test('filtering by status reduces row count', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+    // Only Active rows (167) should remain
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+  });
+
+  test('filter badge shows active filter count', async ({ page }) => {
+    await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
+
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+
+    await expect(page.locator('[data-testid="filter-badge"]')).toContainText('1');
+
+    await page.locator('[data-testid="filter-customer"]').fill('Acme');
+    await expect(page.locator('[data-testid="filter-badge"]')).toContainText('2');
+  });
+
+  test('clearing a filter restores rows', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+
+    await page.locator('[data-testid="filter-status"]').fill('');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+  });
+
+  test('filtering combined with grouping updates group counts', async ({ page }) => {
+    await page.locator('[data-testid="col-group-toggle-status"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
+
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-customer"]').fill('Acme');
+
+    // Acme Corp appears every 8 rows → 500/8 = 62 or 63 rows, distributed across groups
+    // Row total < 503 and group headers still visible
+    const total = await page.locator('[data-testid="row-total"]').innerText();
+    expect(parseInt(total)).toBeLessThan(503);
+    await expect(page.locator('table tbody')).toContainText('Status:');
   });
 });

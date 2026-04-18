@@ -1,14 +1,18 @@
-import { useState, useCallback, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useRef, type ReactNode, type ChangeEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   getGroupedRowModel,
   getExpandedRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
   flexRender,
   type ColumnDef,
   type ExpandedState,
   type Row,
   type Header,
+  type SortingState,
+  type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -58,16 +62,17 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
 
 // Defined outside the component so the reference is stable across renders.
 const COLUMNS: ColumnDef<Order>[] = [
-  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false },
-  { accessorKey: 'customer', header: 'Customer', id: 'customer' },
-  { accessorKey: 'category', header: 'Category', id: 'category' },
-  { accessorKey: 'status',   header: 'Status',   id: 'status'   },
-  { accessorKey: 'region',   header: 'Region',   id: 'region'   },
+  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true },
+  { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true },
+  { accessorKey: 'category', header: 'Category', id: 'category', enableSorting: true },
+  { accessorKey: 'status',   header: 'Status',   id: 'status',   enableSorting: true },
+  { accessorKey: 'region',   header: 'Region',   id: 'region',   enableSorting: true },
   {
     accessorKey: 'amount',
     header: 'Amount',
     id: 'amount',
     enableGrouping: false,
+    enableSorting: true,
     cell: (info) => `$${info.getValue<number>().toFixed(2)}`,
     aggregationFn: 'sum',
     aggregatedCell: ({ getValue }) => `$${getValue<number>().toFixed(2)}`,
@@ -81,35 +86,110 @@ const COLUMNS: ColumnDef<Order>[] = [
 function DraggableHeader({
   header,
   isGrouped,
+  onToggleGrouping,
 }: {
   header: Header<Order, unknown>;
   isGrouped: boolean;
+  onToggleGrouping: (colId: string) => void;
 }) {
   const canGroup = header.column.columnDef.enableGrouping !== false;
+  const canSort = header.column.getCanSort();
+  const sortDir = header.column.getIsSorted();
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `col:${header.column.id}`,
     disabled: !canGroup,
   });
 
+  const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
+
   return (
     <th
-      ref={setNodeRef}
       style={{
-        padding: '8px 12px',
+        padding: 0,
         textAlign: 'left',
         backgroundColor: isGrouped ? '#dbeafe' : '#f3f4f6',
         borderBottom: isGrouped ? '2px solid #2563eb' : '2px solid #e5e7eb',
         fontWeight: isGrouped ? 700 : 600,
-        userSelect: 'none',
-        cursor: !canGroup ? 'default' : isDragging ? 'grabbing' : 'grab',
         whiteSpace: 'nowrap',
-        opacity: isDragging ? 0.6 : 1,
       }}
-      {...attributes}
-      {...listeners}
     >
-      {isGrouped && <span style={{ marginRight: 6, color: '#2563eb' }}>⊞</span>}
-      {flexRender(header.column.columnDef.header, header.getContext())}
+      <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
+        {/* Drag handle — only rendered for groupable columns */}
+        {canGroup && (
+          <div
+            ref={setNodeRef}
+            {...attributes}
+            {...listeners}
+            data-testid={`col-drag-${header.column.id}`}
+            title="Drag to group"
+            style={{
+              padding: '8px 6px',
+              cursor: isDragging ? 'grabbing' : 'grab',
+              opacity: isDragging ? 0.6 : 1,
+              color: '#9ca3af',
+              fontSize: 14,
+              userSelect: 'none',
+              lineHeight: 1,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            ⠿
+          </div>
+        )}
+
+        {/* Sort button — label + indicator */}
+        <button
+          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+          style={{
+            flex: 1,
+            padding: canGroup ? '8px 4px 8px 0' : '8px 12px',
+            background: 'none',
+            border: 'none',
+            textAlign: 'left',
+            cursor: canSort ? 'pointer' : 'default',
+            fontWeight: 'inherit',
+            fontSize: 'inherit',
+            fontFamily: 'inherit',
+            color: 'inherit',
+            userSelect: 'none',
+          }}
+          aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
+        >
+          {isGrouped && <span style={{ marginRight: 4, color: '#2563eb' }}>⊞</span>}
+          {flexRender(header.column.columnDef.header, header.getContext())}
+          {canSort && (
+            <span style={{ marginLeft: 4, color: sortDir ? '#2563eb' : '#9ca3af', fontSize: 11 }}>
+              {sortIndicator || ' ⇅'}
+            </span>
+          )}
+        </button>
+
+        {/* Tap-to-group toggle — mobile-friendly alternative to drag */}
+        {canGroup && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onToggleGrouping(header.column.id)}
+            data-testid={`col-group-toggle-${header.column.id}`}
+            title={isGrouped ? 'Remove grouping' : 'Group by this column'}
+            aria-label={isGrouped ? `Remove ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id} grouping` : `Group by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
+            style={{
+              padding: '8px 8px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: isGrouped ? '#2563eb' : '#9ca3af',
+              fontSize: 14,
+              lineHeight: 1,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {isGrouped ? '⊟' : '⊞'}
+          </button>
+        )}
+      </div>
     </th>
   );
 }
@@ -239,6 +319,9 @@ function GroupByBand({
 export function GroupableTable() {
   const [grouping, setGrouping] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<ExpandedState>(true);
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [showFilters, setShowFilters] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -248,12 +331,16 @@ export function GroupableTable() {
   const table = useReactTable<Order>({
     data: ORDER_DATA,
     columns: COLUMNS,
-    state: { grouping, expanded },
+    state: { grouping, expanded, sorting, columnFilters },
     onGroupingChange: setGrouping,
     onExpandedChange: setExpanded,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     autoResetExpanded: false,
     groupedColumnMode: false,
   });
@@ -268,8 +355,9 @@ export function GroupableTable() {
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
 
+  const activeFilterCount = columnFilters.length;
+
   // getExpandedRowModel returns a flat list — feed it directly to the virtualizer.
-  // Group headers and leaf rows have slightly different heights so we estimate per row type.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
@@ -280,8 +368,6 @@ export function GroupableTable() {
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalVirtualSize = rowVirtualizer.getTotalSize();
 
-  // Padding sentinels let us use a normal <table> layout (no position:absolute on <tr>)
-  // while still skipping off-screen rows.
   const paddingTop = virtualItems.length > 0 ? (virtualItems[0]?.start ?? 0) : 0;
   const paddingBottom =
     virtualItems.length > 0
@@ -290,6 +376,14 @@ export function GroupableTable() {
 
   const handleRemoveGrouping = useCallback((colId: string) => {
     setGrouping((prev) => prev.filter((id) => id !== colId));
+  }, []);
+
+  const handleToggleGrouping = useCallback((colId: string) => {
+    setGrouping((prev) => {
+      if (prev.includes(colId)) return prev.filter((id) => id !== colId);
+      return [...prev, colId];
+    });
+    setExpanded(true);
   }, []);
 
   function handleDragEnd({ active, over }: DragEndEvent): void {
@@ -379,10 +473,48 @@ export function GroupableTable() {
     <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ marginBottom: 8 }}>Orders</h1>
       <p style={{ marginBottom: 12, color: '#6b7280', fontSize: 14 }}>
-        Drag a column header into the band to group rows. Drag chips to reorder. Click × to remove.
+        Drag a column header into the band to group rows, or tap ⊞ on mobile. Click column labels to sort.
       </p>
+
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
+
+        {/* Toolbar: filter toggle */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+          <button
+            data-testid="toggle-filters"
+            onClick={() => setShowFilters((v) => !v)}
+            style={{
+              padding: '4px 12px',
+              fontSize: 13,
+              cursor: 'pointer',
+              borderRadius: 4,
+              border: '1px solid',
+              borderColor: showFilters ? '#2563eb' : '#d1d5db',
+              backgroundColor: showFilters ? '#eff6ff' : '#fff',
+              color: showFilters ? '#2563eb' : '#374151',
+              fontWeight: showFilters ? 600 : 400,
+            }}
+          >
+            Filters
+            {activeFilterCount > 0 && (
+              <span
+                data-testid="filter-badge"
+                style={{
+                  marginLeft: 6,
+                  backgroundColor: '#2563eb',
+                  color: '#fff',
+                  borderRadius: 10,
+                  padding: '1px 6px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
 
         {/* Scroll container — fixed height so the virtualizer has a stable viewport */}
         <div
@@ -398,10 +530,48 @@ export function GroupableTable() {
                       key={header.id}
                       header={header}
                       isGrouped={grouping.includes(header.column.id)}
+                      onToggleGrouping={handleToggleGrouping}
                     />
                   ))}
                 </tr>
               ))}
+
+              {/* Optional filter row */}
+              {showFilters && (
+                <tr style={{ backgroundColor: '#f9fafb' }}>
+                  {table.getHeaderGroups()[0]?.headers.map((header) => {
+                    const canFilter = header.column.getCanFilter();
+                    const filterValue = (header.column.getFilterValue() ?? '') as string;
+                    return (
+                      <th
+                        key={header.id}
+                        style={{ padding: '4px 8px', fontWeight: 400 }}
+                      >
+                        {canFilter ? (
+                          <input
+                            data-testid={`filter-${header.column.id}`}
+                            value={filterValue}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                              header.column.setFilterValue(e.target.value || undefined)
+                            }
+                            placeholder={`Filter…`}
+                            aria-label={`Filter ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: 12,
+                              border: '1px solid #d1d5db',
+                              borderRadius: 3,
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        ) : null}
+                      </th>
+                    );
+                  })}
+                </tr>
+              )}
             </thead>
             <tbody>
               {paddingTop > 0 && (
