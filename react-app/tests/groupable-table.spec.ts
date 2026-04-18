@@ -263,6 +263,13 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
+  test('ID filter uses exact match — "9" returns only row 9', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-id"]').fill('9');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('1 rows');
+    await expect(page.locator('table tbody')).toContainText('9');
+  });
+
   test('filter badge shows active filter count', async ({ page }) => {
     await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
 
