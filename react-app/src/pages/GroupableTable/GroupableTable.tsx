@@ -62,11 +62,11 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
 }));
 
 const COLUMNS: ColumnDef<Order>[] = [
-  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true, filterFn: 'weakEquals' },
-  { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true },
-  { accessorKey: 'category', header: 'Category', id: 'category', enableSorting: true },
-  { accessorKey: 'status',   header: 'Status',   id: 'status',   enableSorting: true },
-  { accessorKey: 'region',   header: 'Region',   id: 'region',   enableSorting: true },
+  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'category', header: 'Category', id: 'category', enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'status',   header: 'Status',   id: 'status',   enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'region',   header: 'Region',   id: 'region',   enableSorting: true, filterFn: 'includesString' },
   {
     accessorKey: 'amount',
     header: 'Amount',
