@@ -1,11 +1,10 @@
-import { useState, useCallback, useRef, useLayoutEffect, type ReactNode, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useMemo, type ReactNode, type ChangeEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   getGroupedRowModel,
   getExpandedRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
   flexRender,
   type ColumnDef,
   type ExpandedState,
@@ -60,8 +59,6 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
   region: REGIONS[i % REGIONS.length]!,
   amount: Math.round((50 + ((i * 379) % 9950)) * 100) / 100,
 }));
-
-const NO_FILTERS: ColumnFiltersState = [];
 
 // Estimated pixel heights for the virtualizer. Derived from padding (6px top+bottom)
 // plus line height. Group rows are slightly taller due to the expand indicator.
@@ -312,10 +309,23 @@ export function GroupableTable() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   );
 
+  // Apply column filters manually when the filter panel is visible.
+  // manualFiltering:true tells TanStack Table to skip its own filter pipeline,
+  // so we own the filter logic and the autoResetPageIndex callback never fires.
+  const filteredData = useMemo(() => {
+    if (!showFilters || columnFilters.length === 0) return ORDER_DATA;
+    return ORDER_DATA.filter((row) =>
+      columnFilters.every(({ id, value }) => {
+        const cell = String(row[id as keyof Order] ?? '').toLowerCase();
+        return cell.includes(String(value).toLowerCase());
+      }),
+    );
+  }, [showFilters, columnFilters]);
+
   const table = useReactTable<Order>({
-    data: ORDER_DATA,
+    data: filteredData,
     columns: COLUMNS,
-    state: { grouping, expanded, sorting, columnFilters: showFilters ? columnFilters : NO_FILTERS },
+    state: { grouping, expanded, sorting, columnFilters },
     onGroupingChange: setGrouping,
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
@@ -324,7 +334,7 @@ export function GroupableTable() {
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    manualFiltering: true,
     autoResetExpanded: false,
     groupedColumnMode: false,
   });
