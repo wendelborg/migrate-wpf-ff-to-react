@@ -128,8 +128,11 @@ test.describe('GroupableTable', () => {
     await expect(band).toContainText('Status');
     await expect(band).toContainText('Category');
 
-    // Collapsed: only the 3 top-level status group headers visible
-    await expect(page.locator('[data-testid="row-total"]')).toContainText('3 rows');
+    // Status groups (depth 0) are expanded; Category groups (depth 1, leaf) are collapsed.
+    // Flat model: 3 status rows + 3×4 category rows = 15 rows visible.
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('15 rows');
+    // Category groups are visible but collapsed (no leaf rows yet)
+    await expect(page.locator('table tbody')).toContainText('Category: Electronics');
   });
 
   test('removing a grouping chip restores flat rows', async ({ page }) => {
@@ -290,8 +293,8 @@ test.describe('GroupableTable', () => {
     // Acme Corp rows span multiple status groups — groups still visible
     const text = await page.locator('[data-testid="row-total"]').innerText();
     const total = parseInt(text.match(/^(\d+)/)?.[1] ?? '0', 10);
-    // Acme Corp appears in all 3 status groups so groups still visible, just fewer leaf rows
-    expect(total).toBeLessThan(503);
+    // Acme Corp appears in all 3 status groups — groups still present, leaf rows filtered
+    expect(total).toBeLessThanOrEqual(3);
     await expect(page.locator('table tbody')).toContainText('Status:');
   });
 });

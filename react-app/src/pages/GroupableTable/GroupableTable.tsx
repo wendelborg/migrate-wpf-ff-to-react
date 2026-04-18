@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type ReactNode, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, type ReactNode, type ChangeEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -281,15 +281,12 @@ function GroupByBand({
 
 export function GroupableTable() {
   const [grouping, setGrouping] = useState<string[]>([]);
-  const [expanded, setExpanded] = useState<ExpandedState>(true);
+  const [expanded, setExpanded] = useState<ExpandedState>({});
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  // Groups start collapsed so the user sees the grouping structure first.
-  const COLLAPSED: ExpandedState = {};
 
   // Desktop: activate on 5 px movement (feels instant).
   // Mobile:  activate after 250 ms hold so a quick tap still fires sort.
@@ -314,6 +311,32 @@ export function GroupableTable() {
     autoResetExpanded: false,
     groupedColumnMode: false,
   });
+
+  // After every grouping change, expand all non-leaf group levels and collapse leaf groups.
+  // Non-leaf = depth < grouping.length - 1 (e.g. Status level when grouping by Status+Category).
+  // Leaf     = depth === grouping.length - 1 (the innermost group, which is collapsed by default).
+  // User-initiated expand/collapse via clicking group rows is NOT affected (grouping didn't change).
+  useLayoutEffect(() => {
+    if (grouping.length <= 1) {
+      setExpanded({});
+      return;
+    }
+    const leafDepth = grouping.length - 1;
+    const next: Record<string, boolean> = {};
+    function visit(rows: Row<Order>[]) {
+      for (const row of rows) {
+        if (!row.getIsGrouped()) continue;
+        if (row.depth < leafDepth) {
+          next[row.id] = true;
+          visit(row.subRows);
+        }
+      }
+    }
+    visit(table.getGroupedRowModel().rows);
+    setExpanded(next);
+  // table is intentionally omitted — it changes every render; grouping is the real trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grouping]);
 
   const columnLabels = Object.fromEntries(
     table.getAllColumns().map((col) => {
@@ -355,7 +378,6 @@ export function GroupableTable() {
       if (prev.includes(colId)) return prev.filter((id) => id !== colId);
       return [...prev, colId];
     });
-    setExpanded(COLLAPSED);
   }, []);
 
   function handleDragEnd({ active, over }: DragEndEvent): void {
@@ -369,7 +391,6 @@ export function GroupableTable() {
 
       if (overId === 'band:dropzone') {
         setGrouping((prev) => [...prev, colId]);
-        setExpanded(COLLAPSED);
         return;
       }
       if (overId.startsWith('chip:')) {
@@ -381,7 +402,6 @@ export function GroupableTable() {
           next.splice(insertAt, 0, colId);
           return next;
         });
-        setExpanded(COLLAPSED);
         return;
       }
     }
