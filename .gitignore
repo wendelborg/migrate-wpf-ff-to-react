@@ -13,6 +13,10 @@ node_modules/
 react-app/dist/
 react-app/*.tsbuildinfo
 
+# Playwright output
+test-results/
+playwright-report/
+
 # .NET build output
 [Bb]in/
 [Oo]bj/
