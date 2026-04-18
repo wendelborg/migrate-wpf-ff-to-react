@@ -266,11 +266,17 @@ export function GroupableTable<TData extends Record<string, unknown>>({
 
   // Derived from the columns prop — stable as long as `columns` is a stable reference.
   const columnLabels = useMemo(
-    () => Object.fromEntries(columns.map((col) => [col.id!, getColumnLabel(col.header, col.id!)])),
+    () => Object.fromEntries(
+      columns
+        .filter((col): col is typeof col & { id: string } => col.id != null)
+        .map((col) => [col.id, getColumnLabel(col.header, col.id)]),
+    ),
     [columns],
   );
   const groupableColumnIds = useMemo(
-    () => columns.filter((col) => col.enableGrouping !== false).map((col) => col.id!),
+    () => columns
+      .filter((col): col is typeof col & { id: string } => col.id != null && col.enableGrouping !== false)
+      .map((col) => col.id),
     [columns],
   );
 

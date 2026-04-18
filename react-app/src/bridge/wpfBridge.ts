@@ -34,7 +34,11 @@ export const wpfBridge: AppBridge = {
 
   onEvent: (handler) => {
     const listener = (e: { data: string }) => {
-      handler(JSON.parse(e.data) as BridgeMessage);
+      try {
+        handler(JSON.parse(e.data) as BridgeMessage);
+      } catch {
+        console.error('[wpfBridge] Failed to parse message:', e.data);
+      }
     };
     window.chrome.webview.addEventListener('message', listener);
     return () => window.chrome.webview.removeEventListener('message', listener);
