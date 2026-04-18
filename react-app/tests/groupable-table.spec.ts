@@ -29,25 +29,21 @@ async function dragInto(page: Page, sourceSelector: string, targetSelector: stri
 test.describe('GroupableTable', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/groupable-table');
-    // Wait for the table to be rendered
+    // Wait for the virtualizer to render at least one row
     await page.waitForSelector('table tbody tr');
   });
 
   // -------------------------------------------------------------------------
-  // Screenshots — the main deliverable
+  // Screenshots
   // -------------------------------------------------------------------------
 
   test('screenshot: before and after nesting by Status then Category', async ({ page }) => {
-    // --- BEFORE: flat table, no grouping ---
-    await expect(page.locator('table tbody tr')).toHaveCount(20);
     await page.screenshot({ path: 'tests/screenshots/01-before-grouping.png', fullPage: false });
 
-    // --- AFTER STEP 1: group by Status ---
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="group-band"]')).toContainText('Status');
     await page.screenshot({ path: 'tests/screenshots/02-grouped-by-status.png', fullPage: false });
 
-    // --- AFTER STEP 2: group by Category inside Status ---
     await dragInto(page, 'th:has-text("Category")', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="group-band"]')).toContainText('Category');
     await page.screenshot({ path: 'tests/screenshots/03-nested-status-category.png', fullPage: false });
@@ -57,11 +53,16 @@ test.describe('GroupableTable', () => {
   // Functional tests
   // -------------------------------------------------------------------------
 
-  test('renders 20 data rows initially with no grouping', async ({ page }) => {
-    await expect(page.locator('table tbody tr')).toHaveCount(20);
+  test('renders 500 total rows with no grouping', async ({ page }) => {
+    // Virtualizer renders only the visible slice — check the footer readout for total
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
     await expect(page.locator('[data-testid="group-band"]')).toContainText(
       'Drag a column header here to group by that column',
     );
+    // DOM has far fewer rows than 500 — confirm virtualization is active
+    const domRowCount = await page.locator('table tbody tr').count();
+    expect(domRowCount).toBeLessThan(500);
+    expect(domRowCount).toBeGreaterThan(0);
   });
 
   test('dragging a header to the band creates a grouping chip', async ({ page }) => {
@@ -72,42 +73,43 @@ test.describe('GroupableTable', () => {
     await expect(band).not.toContainText('Drag a column header here');
   });
 
-  test('grouping shows 3 group headers plus all leaf rows (groups start expanded)', async ({ page }) => {
+  test('grouping shows group headers with correct labels', async ({ page }) => {
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
 
-    // 3 status values (groups start expanded) + 20 leaf rows = 23
-    await expect(page.locator('table tbody tr')).toHaveCount(23);
+    // Active is always the first row — check it and its count badge
+    await expect(page.locator('table tbody')).toContainText('Status: Active');
+    await expect(page.locator('table tbody')).toContainText(/\(\d+\)/);
+
+    // Each group has 167 leaf rows, so Pending and Closed start far below the fold.
+    // Collapse Active → Pending header enters viewport.
+    await page.locator('table tbody tr').first().click();
+    await expect(page.locator('table tbody')).toContainText('Status: Pending');
+    // Collapse Pending → Closed header enters viewport.
+    await page.locator('table tbody tr:has-text("Status: Pending")').click();
+    await expect(page.locator('table tbody')).toContainText('Status: Closed');
   });
 
-  test('group headers show column name, value, and row count', async ({ page }) => {
+  test('row-total updates to reflect visible rows after grouping', async ({ page }) => {
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
-
-    const rows = page.locator('table tbody tr');
-    const text = await rows.allInnerTexts();
-    const combined = text.join('\n');
-
-    expect(combined).toMatch(/Status:\s*Active/);
-    expect(combined).toMatch(/Status:\s*Pending/);
-    expect(combined).toMatch(/Status:\s*Closed/);
-    // Each group header shows a count in parentheses
-    expect(combined).toMatch(/\(\d+\)/);
+    // 3 group headers + 500 leaf rows = 503 visible rows in the flat model
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
   });
 
-  test('clicking a group header expands and collapses rows', async ({ page }) => {
+  test('clicking a group header collapses and expands its rows', async ({ page }) => {
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
 
-    // All 3 groups start expanded → 3 group rows + 20 leaf rows = 23
-    await expect(page.locator('table tbody tr')).toHaveCount(23);
+    const totalBefore = await page.locator('[data-testid="row-total"]').innerText();
 
-    // Click the first group header to collapse it
+    // Collapse the first visible group header
     await page.locator('table tbody tr').first().click();
-    // One group is now collapsed — fewer rows visible
-    const after = await page.locator('table tbody tr').count();
-    expect(after).toBeLessThan(23);
 
-    // Click again to expand
+    // Total rows in the flat model decreases when a group collapses
+    const totalAfter = await page.locator('[data-testid="row-total"]').innerText();
+    expect(totalAfter).not.toBe(totalBefore);
+
+    // Re-expand
     await page.locator('table tbody tr').first().click();
-    await expect(page.locator('table tbody tr')).toHaveCount(23);
+    await expect(page.locator('[data-testid="row-total"]')).toHaveText(totalBefore);
   });
 
   test('two-level nesting: group by Status then Category', async ({ page }) => {
@@ -118,40 +120,35 @@ test.describe('GroupableTable', () => {
     await expect(band).toContainText('Status');
     await expect(band).toContainText('Category');
 
-    // With two levels expanded: Status (3) + Status×Category combos + 20 leaf rows
-    const rowCount = await page.locator('table tbody tr').count();
-    expect(rowCount).toBeGreaterThan(23);
+    // 3 status groups × 4 category groups + 500 leaf rows = 12 + 3 + 500 = 515
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('515 rows');
   });
 
   test('removing a grouping chip restores flat rows', async ({ page }) => {
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
-    await expect(page.locator('table tbody tr')).toHaveCount(23); // 3 groups + 20 leaves
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('503 rows');
 
-    // Click the × on the Status chip
     await page.locator('[data-testid="group-band"] button[aria-label="Remove Status grouping"]').click();
 
-    await expect(page.locator('table tbody tr')).toHaveCount(20);
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
     await expect(page.locator('[data-testid="group-band"]')).toContainText(
       'Drag a column header here to group by that column',
     );
   });
 
   test('ID and Amount headers are not draggable into the band', async ({ page }) => {
-    // Drag ID header — it has enableGrouping:false so band should stay empty
     await dragInto(page, 'th:has-text("ID")', '[data-testid="group-band"]');
     await expect(page.locator('[data-testid="group-band"]')).toContainText(
       'Drag a column header here to group by that column',
     );
-    await expect(page.locator('table tbody tr')).toHaveCount(20);
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
   });
 
   test('grouped column header gets visual indicator', async ({ page }) => {
-    // Before: Status header has no ⊞
-    await expect(page.locator('th:has-text("Status")')).not.toContainText('⊞');
+    await expect(page.locator('th:has-text("⊞")')).toHaveCount(0);
 
     await dragInto(page, 'th:has-text("Status")', '[data-testid="group-band"]');
 
-    // After: Status header shows ⊞
     await expect(page.locator('th:has-text("⊞")')).toBeVisible();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, type ReactNode } from 'react';
+import { useState, useCallback, useRef, type ReactNode } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -10,6 +10,7 @@ import {
   type Row,
   type Header,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
   closestCenter,
@@ -37,32 +38,23 @@ interface Order {
   customer: string;
   category: 'Electronics' | 'Clothing' | 'Food' | 'Home';
   status: 'Active' | 'Pending' | 'Closed';
-  region: 'North' | 'South' | 'West';
+  region: 'North' | 'South' | 'East' | 'West';
   amount: number;
 }
 
-const ORDER_DATA: Order[] = [
-  { id:  1, customer: 'Acme Corp', category: 'Electronics', status: 'Active',  region: 'North', amount: 1250.00 },
-  { id:  2, customer: 'Globex',    category: 'Clothing',    status: 'Pending', region: 'South', amount:  340.50 },
-  { id:  3, customer: 'Initech',   category: 'Food',        status: 'Active',  region: 'West',  amount:   89.99 },
-  { id:  4, customer: 'Umbrella',  category: 'Electronics', status: 'Closed',  region: 'North', amount: 2100.00 },
-  { id:  5, customer: 'Waystar',   category: 'Home',        status: 'Pending', region: 'South', amount:  450.00 },
-  { id:  6, customer: 'Acme Corp', category: 'Clothing',    status: 'Active',  region: 'West',  amount:  125.00 },
-  { id:  7, customer: 'Initech',   category: 'Electronics', status: 'Active',  region: 'South', amount:  780.00 },
-  { id:  8, customer: 'Globex',    category: 'Food',        status: 'Closed',  region: 'North', amount:   55.00 },
-  { id:  9, customer: 'Waystar',   category: 'Electronics', status: 'Pending', region: 'West',  amount: 3200.00 },
-  { id: 10, customer: 'Umbrella',  category: 'Clothing',    status: 'Active',  region: 'North', amount:  210.00 },
-  { id: 11, customer: 'Acme Corp', category: 'Food',        status: 'Closed',  region: 'South', amount:   67.50 },
-  { id: 12, customer: 'Globex',    category: 'Home',        status: 'Active',  region: 'West',  amount:  920.00 },
-  { id: 13, customer: 'Initech',   category: 'Clothing',    status: 'Pending', region: 'North', amount:  185.00 },
-  { id: 14, customer: 'Waystar',   category: 'Food',        status: 'Active',  region: 'South', amount:   42.00 },
-  { id: 15, customer: 'Umbrella',  category: 'Home',        status: 'Pending', region: 'West',  amount: 1100.00 },
-  { id: 16, customer: 'Acme Corp', category: 'Electronics', status: 'Closed',  region: 'North', amount: 4500.00 },
-  { id: 17, customer: 'Globex',    category: 'Clothing',    status: 'Active',  region: 'South', amount:  295.00 },
-  { id: 18, customer: 'Initech',   category: 'Home',        status: 'Closed',  region: 'West',  amount:  675.00 },
-  { id: 19, customer: 'Waystar',   category: 'Clothing',    status: 'Active',  region: 'North', amount:  160.00 },
-  { id: 20, customer: 'Umbrella',  category: 'Food',        status: 'Pending', region: 'South', amount:   33.00 },
-];
+const CUSTOMERS = ['Acme Corp', 'Globex', 'Initech', 'Umbrella', 'Waystar', 'Contoso', 'Fabrikam', 'Northwind'] as const;
+const CATEGORIES = ['Electronics', 'Clothing', 'Food', 'Home'] as const;
+const STATUSES = ['Active', 'Pending', 'Closed'] as const;
+const REGIONS = ['North', 'South', 'East', 'West'] as const;
+
+const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
+  id: i + 1,
+  customer: CUSTOMERS[i % CUSTOMERS.length]!,
+  category: CATEGORIES[i % CATEGORIES.length]!,
+  status: STATUSES[i % STATUSES.length]!,
+  region: REGIONS[i % REGIONS.length]!,
+  amount: Math.round((50 + ((i * 379) % 9950)) * 100) / 100,
+}));
 
 // Defined outside the component so the reference is stable across renders.
 const COLUMNS: ColumnDef<Order>[] = [
@@ -247,6 +239,7 @@ function GroupByBand({
 export function GroupableTable() {
   const [grouping, setGrouping] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<ExpandedState>(true);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -273,6 +266,27 @@ export function GroupableTable() {
   );
 
   const colCount = table.getAllLeafColumns().length;
+  const rows = table.getRowModel().rows;
+
+  // getExpandedRowModel returns a flat list — feed it directly to the virtualizer.
+  // Group headers and leaf rows have slightly different heights so we estimate per row type.
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: (index) => (rows[index]?.getIsGrouped() ? 40 : 37),
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalVirtualSize = rowVirtualizer.getTotalSize();
+
+  // Padding sentinels let us use a normal <table> layout (no position:absolute on <tr>)
+  // while still skipping off-screen rows.
+  const paddingTop = virtualItems.length > 0 ? (virtualItems[0]?.start ?? 0) : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? totalVirtualSize - (virtualItems[virtualItems.length - 1]?.end ?? 0)
+      : 0;
 
   const handleRemoveGrouping = useCallback((colId: string) => {
     setGrouping((prev) => prev.filter((id) => id !== colId));
@@ -317,8 +331,6 @@ export function GroupableTable() {
     }
   }
 
-  // getExpandedRowModel already flattens the visible tree into a plain list —
-  // use row.depth for indentation instead of recursing into subRows manually.
   function renderRow(row: Row<Order>): ReactNode {
     if (row.getIsGrouped()) {
       const colId = row.groupingColumnId ?? '';
@@ -371,9 +383,14 @@ export function GroupableTable() {
       </p>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
-        <div style={{ overflowX: 'auto' }}>
+
+        {/* Scroll container — fixed height so the virtualizer has a stable viewport */}
+        <div
+          ref={tableContainerRef}
+          style={{ height: 520, overflowY: 'auto', overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 4 }}
+        >
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
-            <thead>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -387,11 +404,28 @@ export function GroupableTable() {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map(renderRow)}
+              {paddingTop > 0 && (
+                <tr><td colSpan={colCount} style={{ height: paddingTop, padding: 0 }} /></tr>
+              )}
+              {virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index];
+                if (!row) return null;
+                return renderRow(row);
+              })}
+              {paddingBottom > 0 && (
+                <tr><td colSpan={colCount} style={{ height: paddingBottom, padding: 0 }} /></tr>
+              )}
             </tbody>
           </table>
         </div>
       </DndContext>
+
+      <p
+        data-testid="row-total"
+        style={{ marginTop: 8, fontSize: 12, color: '#9ca3af' }}
+      >
+        {rows.length} rows ({ORDER_DATA.length} total)
+      </p>
     </div>
   );
 }
