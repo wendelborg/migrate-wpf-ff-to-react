@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type ReactNode, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, type ReactNode, type ChangeEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,7 +18,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -60,7 +61,6 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
   amount: Math.round((50 + ((i * 379) % 9950)) * 100) / 100,
 }));
 
-// Defined outside the component so the reference is stable across renders.
 const COLUMNS: ColumnDef<Order>[] = [
   { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true },
   { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true },
@@ -80,17 +80,19 @@ const COLUMNS: ColumnDef<Order>[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// DraggableHeader — column headers are the drag source
+// DraggableHeader
+// The whole <th> is the drag source for groupable columns.
+// Desktop: MouseSensor activates after 5 px of movement (instant drag feel).
+// Mobile:  TouchSensor activates after a 250 ms long-press so a quick tap
+//          still fires the sort button's onClick normally.
 // ---------------------------------------------------------------------------
 
 function DraggableHeader({
   header,
   isGrouped,
-  onToggleGrouping,
 }: {
   header: Header<Order, unknown>;
   isGrouped: boolean;
-  onToggleGrouping: (colId: string) => void;
 }) {
   const canGroup = header.column.columnDef.enableGrouping !== false;
   const canSort = header.column.getCanSort();
@@ -102,13 +104,17 @@ function DraggableHeader({
   });
 
   const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
-
   const colLabel = typeof header.column.columnDef.header === 'string'
     ? header.column.columnDef.header
     : header.column.id;
 
   return (
     <th
+      ref={canGroup ? setNodeRef : undefined}
+      {...(canGroup ? attributes : {})}
+      {...(canGroup ? listeners : {})}
+      data-testid={canGroup ? `col-drag-${header.column.id}` : undefined}
+      title={canGroup ? 'Hold and drag to group, or use "Group by" panel' : undefined}
       style={{
         padding: 0,
         textAlign: 'left',
@@ -116,93 +122,44 @@ function DraggableHeader({
         borderBottom: isGrouped ? '2px solid #2563eb' : '2px solid #e5e7eb',
         fontWeight: isGrouped ? 700 : 600,
         whiteSpace: 'nowrap',
+        cursor: canGroup ? (isDragging ? 'grabbing' : 'grab') : 'default',
+        opacity: isDragging ? 0.6 : 1,
+        userSelect: 'none',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
-        {/* Drag handle — desktop only, narrow strip */}
-        {canGroup && (
-          <div
-            ref={setNodeRef}
-            {...attributes}
-            {...listeners}
-            data-testid={`col-drag-${header.column.id}`}
-            title="Drag to group"
-            style={{
-              padding: '8px 6px',
-              cursor: isDragging ? 'grabbing' : 'grab',
-              opacity: isDragging ? 0.6 : 1,
-              color: '#9ca3af',
-              fontSize: 14,
-              userSelect: 'none',
-              lineHeight: 1,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            ⠿
-          </div>
+      {/* Sort button — quick tap sorts; long press initiates the <th> drag */}
+      <button
+        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+        aria-label={`Sort by ${colLabel}`}
+        style={{
+          display: 'block',
+          width: '100%',
+          padding: '10px 12px',
+          background: 'none',
+          border: 'none',
+          textAlign: 'left',
+          cursor: canSort ? 'pointer' : 'default',
+          fontWeight: 'inherit',
+          fontSize: 'inherit',
+          fontFamily: 'inherit',
+          color: 'inherit',
+          userSelect: 'none',
+        }}
+      >
+        {isGrouped && <span style={{ marginRight: 4, color: '#2563eb' }}>⊞</span>}
+        {flexRender(header.column.columnDef.header, header.getContext())}
+        {canSort && (
+          <span style={{ marginLeft: 4, color: sortDir ? '#2563eb' : '#9ca3af', fontSize: 11 }}>
+            {sortIndicator || ' ⇅'}
+          </span>
         )}
-
-        {/* Sort button — label area, flex: 1 */}
-        <button
-          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-          style={{
-            flex: 1,
-            padding: canGroup ? '8px 4px 8px 0' : '8px 12px',
-            background: 'none',
-            border: 'none',
-            textAlign: 'left',
-            cursor: canSort ? 'pointer' : 'default',
-            fontWeight: 'inherit',
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
-            color: 'inherit',
-            userSelect: 'none',
-          }}
-          aria-label={`Sort by ${colLabel}`}
-        >
-          {isGrouped && <span style={{ marginRight: 4, color: '#2563eb' }}>⊞</span>}
-          {flexRender(header.column.columnDef.header, header.getContext())}
-          {canSort && (
-            <span style={{ marginLeft: 4, color: sortDir ? '#2563eb' : '#9ca3af', fontSize: 11 }}>
-              {sortIndicator || ' ⇅'}
-            </span>
-          )}
-        </button>
-
-        {/* Group toggle — full height, 44 px wide: standard mobile touch target */}
-        {canGroup && (
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => onToggleGrouping(header.column.id)}
-            data-testid={`col-group-toggle-${header.column.id}`}
-            title={isGrouped ? `Remove ${colLabel} grouping` : `Group by ${colLabel}`}
-            aria-label={isGrouped ? `Remove ${colLabel} grouping` : `Group by ${colLabel}`}
-            style={{
-              alignSelf: 'stretch',
-              minWidth: 44,
-              padding: '0 8px',
-              background: isGrouped ? '#bfdbfe' : 'none',
-              border: 'none',
-              borderLeft: '1px solid #e5e7eb',
-              cursor: 'pointer',
-              color: isGrouped ? '#2563eb' : '#9ca3af',
-              fontSize: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {isGrouped ? '⊟' : '⊞'}
-          </button>
-        )}
-      </div>
+      </button>
     </th>
   );
 }
 
 // ---------------------------------------------------------------------------
-// GroupChip — a chip in the Group By band representing one active grouping
+// GroupChip
 // ---------------------------------------------------------------------------
 
 function GroupChip({
@@ -241,7 +198,6 @@ function GroupChip({
       {...listeners}
     >
       {label}
-      {/* stopPropagation on pointerDown, not click — dnd-kit captures drag at pointerdown */}
       <button
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => onRemove(columnId)}
@@ -263,7 +219,7 @@ function GroupChip({
 }
 
 // ---------------------------------------------------------------------------
-// GroupByBand — the droppable zone above the table
+// GroupByBand
 // ---------------------------------------------------------------------------
 
 function GroupByBand({
@@ -282,7 +238,7 @@ function GroupByBand({
       ref={setNodeRef}
       data-testid="group-band"
       style={{
-        minHeight: 48,
+        minHeight: 44,
         padding: '8px 12px',
         backgroundColor: isOver ? '#dcfce7' : '#eff6ff',
         border: '2px dashed',
@@ -320,19 +276,23 @@ function GroupByBand({
 }
 
 // ---------------------------------------------------------------------------
-// GroupableTable — main page component
+// GroupableTable
 // ---------------------------------------------------------------------------
 
 export function GroupableTable() {
   const [grouping, setGrouping] = useState<string[]>([]);
-  const [expanded, setExpanded] = useState<ExpandedState>(true);
+  const [expanded, setExpanded] = useState<ExpandedState>({});
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [showGroupPanel, setShowGroupPanel] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
+  // Desktop: activate on 5 px movement (feels instant).
+  // Mobile:  activate after 250 ms hold so a quick tap still fires sort.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   );
 
   const table = useReactTable<Order>({
@@ -352,6 +312,32 @@ export function GroupableTable() {
     groupedColumnMode: false,
   });
 
+  // After every grouping change, expand all non-leaf group levels and collapse leaf groups.
+  // Non-leaf = depth < grouping.length - 1 (e.g. Status level when grouping by Status+Category).
+  // Leaf     = depth === grouping.length - 1 (the innermost group, which is collapsed by default).
+  // User-initiated expand/collapse via clicking group rows is NOT affected (grouping didn't change).
+  useLayoutEffect(() => {
+    if (grouping.length <= 1) {
+      setExpanded({});
+      return;
+    }
+    const leafDepth = grouping.length - 1;
+    const next: Record<string, boolean> = {};
+    function visit(rows: Row<Order>[]) {
+      for (const row of rows) {
+        if (!row.getIsGrouped()) continue;
+        if (row.depth < leafDepth) {
+          next[row.id] = true;
+          visit(row.subRows);
+        }
+      }
+    }
+    visit(table.getGroupedRowModel().rows);
+    setExpanded(next);
+  // table is intentionally omitted — it changes every render; grouping is the real trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grouping]);
+
   const columnLabels = Object.fromEntries(
     table.getAllColumns().map((col) => {
       const h = col.columnDef.header;
@@ -359,12 +345,14 @@ export function GroupableTable() {
     }),
   );
 
+  const groupableColumns = table.getAllLeafColumns().filter(
+    (col) => col.columnDef.enableGrouping !== false,
+  );
+
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
-
   const activeFilterCount = columnFilters.length;
 
-  // getExpandedRowModel returns a flat list — feed it directly to the virtualizer.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
@@ -390,7 +378,6 @@ export function GroupableTable() {
       if (prev.includes(colId)) return prev.filter((id) => id !== colId);
       return [...prev, colId];
     });
-    setExpanded(true);
   }, []);
 
   function handleDragEnd({ active, over }: DragEndEvent): void {
@@ -404,7 +391,6 @@ export function GroupableTable() {
 
       if (overId === 'band:dropzone') {
         setGrouping((prev) => [...prev, colId]);
-        setExpanded(true);
         return;
       }
       if (overId.startsWith('chip:')) {
@@ -416,7 +402,6 @@ export function GroupableTable() {
           next.splice(insertAt, 0, colId);
           return next;
         });
-        setExpanded(true);
         return;
       }
     }
@@ -477,17 +462,54 @@ export function GroupableTable() {
   }
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', display: 'flex', flexDirection: 'column', height: '100vh', boxSizing: 'border-box' }}>
       <h1 style={{ marginBottom: 8 }}>Orders</h1>
       <p style={{ marginBottom: 12, color: '#6b7280', fontSize: 14 }}>
-        Drag a column header into the band to group rows, or tap ⊞ on mobile. Click column labels to sort.
+        Desktop: hold &amp; drag a column header into the band to group. Mobile: use the "Group by" button.
+        Click column headers to sort.
       </p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
 
-        {/* Toolbar: filter toggle */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+        {/* Toolbar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 6 }}>
+          {/* Group by panel toggle */}
+          <button
+            data-testid="toggle-group-panel"
+            onClick={() => setShowGroupPanel((v) => !v)}
+            style={{
+              padding: '4px 12px',
+              fontSize: 13,
+              cursor: 'pointer',
+              borderRadius: 4,
+              border: '1px solid',
+              borderColor: showGroupPanel ? '#2563eb' : '#d1d5db',
+              backgroundColor: showGroupPanel ? '#eff6ff' : '#fff',
+              color: showGroupPanel ? '#2563eb' : '#374151',
+              fontWeight: showGroupPanel ? 600 : 400,
+            }}
+          >
+            Group by
+            {grouping.length > 0 && (
+              <span
+                data-testid="group-badge"
+                style={{
+                  marginLeft: 6,
+                  backgroundColor: '#2563eb',
+                  color: '#fff',
+                  borderRadius: 10,
+                  padding: '1px 6px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {grouping.length}
+              </span>
+            )}
+          </button>
+
+          {/* Filter toggle */}
           <button
             data-testid="toggle-filters"
             onClick={() => setShowFilters((v) => !v)}
@@ -523,10 +545,57 @@ export function GroupableTable() {
           </button>
         </div>
 
-        {/* Scroll container — fixed height so the virtualizer has a stable viewport */}
+        {/* Group by panel — large tap targets, no drag needed */}
+        {showGroupPanel && (
+          <div
+            data-testid="group-panel"
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 6,
+              marginBottom: 8,
+              overflow: 'hidden',
+              backgroundColor: '#fff',
+            }}
+          >
+            {groupableColumns.map((col, i) => {
+              const label = columnLabels[col.id] ?? col.id;
+              const active = grouping.includes(col.id);
+              return (
+                <button
+                  key={col.id}
+                  data-testid={`group-panel-toggle-${col.id}`}
+                  onClick={() => handleToggleGrouping(col.id)}
+                  style={{
+                    display: 'flex',
+                    width: '100%',
+                    alignItems: 'center',
+                    minHeight: 48,
+                    padding: '10px 16px',
+                    background: active ? '#eff6ff' : '#fff',
+                    border: 'none',
+                    borderTop: i === 0 ? 'none' : '1px solid #f1f5f9',
+                    cursor: 'pointer',
+                    gap: 12,
+                    fontSize: 14,
+                    textAlign: 'left',
+                    color: active ? '#1d4ed8' : '#374151',
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  <span style={{ flex: 1 }}>{label}</span>
+                  {active && (
+                    <span style={{ fontSize: 16, color: '#2563eb' }}>✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Scroll container — flex:1 fills remaining viewport height */}
         <div
           ref={tableContainerRef}
-          style={{ height: 520, overflowY: 'auto', overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 4 }}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 4 }}
         >
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
@@ -537,23 +606,19 @@ export function GroupableTable() {
                       key={header.id}
                       header={header}
                       isGrouped={grouping.includes(header.column.id)}
-                      onToggleGrouping={handleToggleGrouping}
                     />
                   ))}
                 </tr>
               ))}
 
-              {/* Optional filter row */}
+              {/* Filter row */}
               {showFilters && (
                 <tr style={{ backgroundColor: '#f9fafb' }}>
                   {table.getHeaderGroups()[0]?.headers.map((header) => {
                     const canFilter = header.column.getCanFilter();
                     const filterValue = (header.column.getFilterValue() ?? '') as string;
                     return (
-                      <th
-                        key={header.id}
-                        style={{ padding: '4px 8px', fontWeight: 400 }}
-                      >
+                      <th key={header.id} style={{ padding: '4px 8px', fontWeight: 400 }}>
                         {canFilter ? (
                           <input
                             data-testid={`filter-${header.column.id}`}
@@ -561,7 +626,7 @@ export function GroupableTable() {
                             onChange={(e: ChangeEvent<HTMLInputElement>) =>
                               header.column.setFilterValue(e.target.value || undefined)
                             }
-                            placeholder={`Filter…`}
+                            placeholder="Filter…"
                             aria-label={`Filter ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
                             style={{
                               width: '100%',
