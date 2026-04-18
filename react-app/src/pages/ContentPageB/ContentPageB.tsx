@@ -1,21 +1,14 @@
-import { useCallback, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useBridge, useBridgeEvent, type BridgeMessage } from '../../bridge';
+import { useBridge, useLastBridgeEvent } from '../../bridge';
 
 export function ContentPageB() {
   const bridge = useBridge();
   const routeParams = useParams<{ orderId?: string }>();
   const [searchParams] = useSearchParams();
-  const [lastEvent, setLastEvent] = useState<string>('(none)');
+  const lastEvent = useLastBridgeEvent();
 
   const orderId = routeParams.orderId ? Number(routeParams.orderId) : undefined;
   const isReadonly = searchParams.get('readonly') === 'true';
-
-  const handleEvent = useCallback((event: BridgeMessage) => {
-    setLastEvent(`${event.type}: ${JSON.stringify(event.payload)}`);
-  }, []);
-
-  useBridgeEvent(handleEvent);
 
   return (
     <div style={{ padding: 24 }}>
