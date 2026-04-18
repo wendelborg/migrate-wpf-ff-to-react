@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import type { AppBridge, BridgeMessage } from './types';
 
 const BridgeCtx = createContext<AppBridge | null>(null);
@@ -20,11 +20,14 @@ export function useBridge(): AppBridge {
   return bridge;
 }
 
-/** Subscribe to bridge events. The handler is stable-referenced via the latest ref pattern. */
+/** Subscribe to bridge events. Uses the latest-ref pattern so callers can pass
+ *  inline functions without causing the subscription to re-register on every render. */
 export function useBridgeEvent(handler: (event: BridgeMessage) => void) {
   const bridge = useBridge();
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
 
   useEffect(() => {
-    return bridge.onEvent(handler);
-  }, [bridge, handler]);
+    return bridge.onEvent((event) => handlerRef.current(event));
+  }, [bridge]);
 }

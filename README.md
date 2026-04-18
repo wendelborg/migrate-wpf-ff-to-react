@@ -139,3 +139,4 @@ Edit `wpf-host/WpfReactHost/App.config`:
    _windowManager.Navigate("MyNewPage", props);
    ```
    or from another React page via `bridge.navigate('MyNewPage', ...)`.
+
