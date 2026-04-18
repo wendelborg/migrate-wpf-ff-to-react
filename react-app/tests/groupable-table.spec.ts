@@ -26,8 +26,17 @@ async function dragInto(page: Page, sourceSelector: string, targetSelector: stri
   await page.mouse.up();
 }
 
+// Helper: open the Configure toolbox if it is currently collapsed.
+async function openToolbox(page: Page) {
+  const toolbox = page.locator('[data-testid="toolbox"]');
+  if (!(await toolbox.isVisible())) {
+    await page.locator('[data-testid="toggle-toolbox"]').click();
+  }
+}
+
 // Helper: open the Group by panel and tap a column row to toggle grouping.
 async function tapGroupColumn(page: Page, colId: string) {
+  await openToolbox(page);
   const panel = page.locator('[data-testid="group-panel"]');
   if (!(await panel.isVisible())) {
     await page.locator('[data-testid="toggle-group-panel"]').click();
@@ -166,6 +175,7 @@ test.describe('GroupableTable', () => {
   test('Group by button opens panel with column rows', async ({ page }) => {
     await expect(page.locator('[data-testid="group-panel"]')).toHaveCount(0);
 
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-group-panel"]').click();
 
     const panel = page.locator('[data-testid="group-panel"]');
@@ -250,6 +260,7 @@ test.describe('GroupableTable', () => {
   test('filter toggle button shows and hides filter row', async ({ page }) => {
     await expect(page.locator('[data-testid="filter-status"]')).toHaveCount(0);
 
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await expect(page.locator('[data-testid="filter-status"]')).toBeVisible();
 
@@ -258,18 +269,21 @@ test.describe('GroupableTable', () => {
   });
 
   test('filtering by status reduces row count', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('Active');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
   test('text filters are case-insensitive', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('active');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
   test('ID filter uses substring match — "9" returns all IDs containing 9', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-id"]').fill('9');
     // IDs 1-500 whose string representation contains "9": 95 rows
@@ -281,6 +295,7 @@ test.describe('GroupableTable', () => {
   test('filter badge shows active filter count', async ({ page }) => {
     await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
 
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('Active');
     await expect(page.locator('[data-testid="filter-badge"]')).toContainText('1');
@@ -290,6 +305,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('clearing a filter restores rows', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('Active');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
@@ -299,6 +315,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('clear filters button resets all filters at once', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await expect(page.locator('[data-testid="clear-filters"]')).toHaveCount(0);
 
@@ -316,6 +333,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('toggling filters off removes filtering but restores values when re-enabled', async ({ page }) => {
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('Active');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
@@ -336,6 +354,7 @@ test.describe('GroupableTable', () => {
     await tapGroupColumn(page, 'status');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('3 rows');
 
+    await openToolbox(page);
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-customer"]').fill('Acme');
 
