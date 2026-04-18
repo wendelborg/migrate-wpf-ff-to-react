@@ -1,1 +1,1 @@
-export { GroupableTable } from './GroupableTable';
+export { OrdersTable as GroupableTable } from './GroupableTable';
