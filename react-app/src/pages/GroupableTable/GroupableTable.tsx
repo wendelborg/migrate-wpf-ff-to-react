@@ -61,12 +61,14 @@ const ORDER_DATA: Order[] = Array.from({ length: 500 }, (_, i) => ({
   amount: Math.round((50 + ((i * 379) % 9950)) * 100) / 100,
 }));
 
+const NO_FILTERS: ColumnFiltersState = [];
+
 const COLUMNS: ColumnDef<Order>[] = [
-  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true, filterFn: 'weakEquals' },
-  { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true },
-  { accessorKey: 'category', header: 'Category', id: 'category', enableSorting: true },
-  { accessorKey: 'status',   header: 'Status',   id: 'status',   enableSorting: true },
-  { accessorKey: 'region',   header: 'Region',   id: 'region',   enableSorting: true },
+  { accessorKey: 'id',       header: 'ID',       id: 'id',       enableGrouping: false, enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'customer', header: 'Customer', id: 'customer', enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'category', header: 'Category', id: 'category', enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'status',   header: 'Status',   id: 'status',   enableSorting: true, filterFn: 'includesString' },
+  { accessorKey: 'region',   header: 'Region',   id: 'region',   enableSorting: true, filterFn: 'includesString' },
   {
     accessorKey: 'amount',
     header: 'Amount',
@@ -298,7 +300,7 @@ export function GroupableTable() {
   const table = useReactTable<Order>({
     data: ORDER_DATA,
     columns: COLUMNS,
-    state: { grouping, expanded, sorting, columnFilters },
+    state: { grouping, expanded, sorting, columnFilters: showFilters ? columnFilters : NO_FILTERS },
     onGroupingChange: setGrouping,
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
@@ -351,7 +353,7 @@ export function GroupableTable() {
 
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
-  const activeFilterCount = columnFilters.length;
+  const activeFilterCount = showFilters ? columnFilters.length : 0;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,

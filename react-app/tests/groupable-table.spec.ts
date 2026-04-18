@@ -263,11 +263,19 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
-  test('ID filter uses exact match — "9" returns only row 9', async ({ page }) => {
+  test('text filters are case-insensitive', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-status"]').fill('active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+  });
+
+  test('ID filter uses substring match — "9" returns all IDs containing 9', async ({ page }) => {
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-id"]').fill('9');
-    await expect(page.locator('[data-testid="row-total"]')).toContainText('1 rows');
-    await expect(page.locator('table tbody')).toContainText('9');
+    // IDs 1-500 whose string representation contains "9": 95 rows
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('95 rows');
+    // Row 19 and 192 are visible (substring match), row 17 is not
+    await expect(page.locator('table tbody')).toContainText('19');
   });
 
   test('filter badge shows active filter count', async ({ page }) => {
@@ -288,6 +296,23 @@ test.describe('GroupableTable', () => {
 
     await page.locator('[data-testid="filter-status"]').fill('');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+  });
+
+  test('toggling filters off removes filtering but restores values when re-enabled', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+    await expect(page.locator('[data-testid="filter-badge"]')).toContainText('1');
+
+    // Toggle off — all rows restored, badge gone
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+    await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
+
+    // Toggle back on — filtering resumes with the saved value
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="filter-status"]')).toHaveValue('Active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
   test('filtering combined with grouping updates group counts', async ({ page }) => {
