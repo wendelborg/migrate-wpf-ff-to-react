@@ -559,6 +559,25 @@ export function GroupableTable() {
               </span>
             )}
           </button>
+
+          {/* Clear all filters — only visible when filters are open and at least one is active */}
+          {showFilters && activeFilterCount > 0 && (
+            <button
+              data-testid="clear-filters"
+              onClick={() => setColumnFilters([])}
+              style={{
+                padding: '4px 12px',
+                fontSize: 13,
+                cursor: 'pointer',
+                borderRadius: 4,
+                border: '1px solid #fca5a5',
+                backgroundColor: '#fff1f2',
+                color: '#b91c1c',
+              }}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {/* Group by panel — large tap targets, no drag needed */}

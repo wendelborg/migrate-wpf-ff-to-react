@@ -298,6 +298,23 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
   });
 
+  test('clear filters button resets all filters at once', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="clear-filters"]')).toHaveCount(0);
+
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+    await page.locator('[data-testid="filter-customer"]').fill('Acme');
+    await expect(page.locator('[data-testid="filter-badge"]')).toContainText('2');
+    await expect(page.locator('[data-testid="clear-filters"]')).toBeVisible();
+
+    await page.locator('[data-testid="clear-filters"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+    await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="clear-filters"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="filter-status"]')).toHaveValue('');
+    await expect(page.locator('[data-testid="filter-customer"]')).toHaveValue('');
+  });
+
   test('toggling filters off removes filtering but restores values when re-enabled', async ({ page }) => {
     await page.locator('[data-testid="toggle-filters"]').click();
     await page.locator('[data-testid="filter-status"]').fill('Active');
