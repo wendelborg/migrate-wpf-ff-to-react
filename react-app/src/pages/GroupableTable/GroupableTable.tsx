@@ -503,140 +503,137 @@ export function GroupableTable() {
     <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', display: 'flex', flexDirection: 'column', height: '100vh', boxSizing: 'border-box' }}>
       <h1 style={{ marginBottom: 8 }}>Orders</h1>
       <p style={{ marginBottom: 12, color: '#6b7280', fontSize: 14 }}>
-        Drag a column header into the grouping band below, or open Configure to use the Group by
-        panel. Click column headers to sort.
+        Expand the panel below to group and filter. Click column headers to sort.
       </p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        {/* Group band — always visible; shows active groupings and accepts column header drops */}
-        <GroupByBand grouping={grouping} columnLabels={COLUMN_LABELS} onRemove={handleRemoveGrouping} />
-
-        {/* Toolbox toggle — always visible */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+        {/* Accordion wrapper */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 6, marginBottom: 8, overflow: 'hidden' }}>
+          {/* Accordion header — always visible */}
           <button
             data-testid="toggle-toolbox"
             onClick={() => setShowToolbox((v) => !v)}
             style={{
-              padding: '4px 12px',
-              fontSize: 13,
+              display: 'flex',
+              width: '100%',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: '#f8faff',
+              border: 'none',
+              borderBottom: showToolbox ? '1px solid #e2e8f0' : 'none',
               cursor: 'pointer',
-              borderRadius: 4,
-              border: '1px solid',
-              borderColor: showToolbox ? '#2563eb' : '#d1d5db',
-              backgroundColor: showToolbox ? '#eff6ff' : '#fff',
-              color: showToolbox ? '#2563eb' : '#374151',
-              fontWeight: showToolbox ? 600 : 400,
+              fontSize: 14,
+              fontWeight: 500,
+              color: '#374151',
             }}
           >
-            Configure {showToolbox ? '▲' : '▼'}
+            <span>Group &amp; Filter</span>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>{showToolbox ? '▲' : '▼'}</span>
           </button>
-        </div>
 
-        {/* Toolbox content — collapsed by default */}
-        {showToolbox && (
-          <div
-            data-testid="toolbox"
-            style={{
-              marginBottom: 8,
-              padding: '8px 12px',
-              border: '1px solid #e2e8f0',
-              borderRadius: 6,
-              backgroundColor: '#fafafa',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: showGroupPanel ? 8 : 0 }}>
-              {/* Group by panel toggle */}
-              <button
-                data-testid="toggle-group-panel"
-                onClick={() => setShowGroupPanel((v) => !v)}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                  border: '1px solid',
-                  borderColor: showGroupPanel ? '#2563eb' : '#d1d5db',
-                  backgroundColor: showGroupPanel ? '#eff6ff' : '#fff',
-                  color: showGroupPanel ? '#2563eb' : '#374151',
-                  fontWeight: showGroupPanel ? 600 : 400,
-                }}
-              >
-                Group by
-                {grouping.length > 0 && (
-                  <span
-                    data-testid="group-badge"
-                    style={{
-                      marginLeft: 6,
-                      backgroundColor: '#2563eb',
-                      color: '#fff',
-                      borderRadius: 10,
-                      padding: '1px 6px',
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {grouping.length}
-                  </span>
-                )}
-              </button>
+          {/* Accordion body — collapsed by default */}
+          {showToolbox && (
+            <div
+              data-testid="toolbox"
+              style={{ padding: '12px', backgroundColor: '#fafafa' }}
+            >
+              {/* Drop band lives here so the target is visible when the accordion is open */}
+              <GroupByBand grouping={grouping} columnLabels={COLUMN_LABELS} onRemove={handleRemoveGrouping} />
 
-              {/* Filter toggle */}
-              <button
-                data-testid="toggle-filters"
-                onClick={() => setShowFilters((v) => !v)}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                  border: '1px solid',
-                  borderColor: showFilters ? '#2563eb' : '#d1d5db',
-                  backgroundColor: showFilters ? '#eff6ff' : '#fff',
-                  color: showFilters ? '#2563eb' : '#374151',
-                  fontWeight: showFilters ? 600 : 400,
-                }}
-              >
-                Filters
-                {activeFilterCount > 0 && (
-                  <span
-                    data-testid="filter-badge"
-                    style={{
-                      marginLeft: 6,
-                      backgroundColor: '#2563eb',
-                      color: '#fff',
-                      borderRadius: 10,
-                      padding: '1px 6px',
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Clear all filters — only visible when filters are on and at least one is active */}
-              {showFilters && activeFilterCount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: showGroupPanel ? 8 : 0 }}>
+                {/* Group by panel toggle */}
                 <button
-                  data-testid="clear-filters"
-                  onClick={() => setColumnFilters([])}
+                  data-testid="toggle-group-panel"
+                  onClick={() => setShowGroupPanel((v) => !v)}
                   style={{
                     padding: '4px 12px',
                     fontSize: 13,
                     cursor: 'pointer',
                     borderRadius: 4,
-                    border: '1px solid #fca5a5',
-                    backgroundColor: '#fff1f2',
-                    color: '#b91c1c',
+                    border: '1px solid',
+                    borderColor: showGroupPanel ? '#2563eb' : '#d1d5db',
+                    backgroundColor: showGroupPanel ? '#eff6ff' : '#fff',
+                    color: showGroupPanel ? '#2563eb' : '#374151',
+                    fontWeight: showGroupPanel ? 600 : 400,
                   }}
                 >
-                  Clear filters
+                  Group by
+                  {grouping.length > 0 && (
+                    <span
+                      data-testid="group-badge"
+                      style={{
+                        marginLeft: 6,
+                        backgroundColor: '#2563eb',
+                        color: '#fff',
+                        borderRadius: 10,
+                        padding: '1px 6px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {grouping.length}
+                    </span>
+                  )}
                 </button>
-              )}
-            </div>
 
-            {/* Group by panel — large tap targets, no drag required */}
-            {showGroupPanel && (
+                {/* Filter toggle */}
+                <button
+                  data-testid="toggle-filters"
+                  onClick={() => setShowFilters((v) => !v)}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    border: '1px solid',
+                    borderColor: showFilters ? '#2563eb' : '#d1d5db',
+                    backgroundColor: showFilters ? '#eff6ff' : '#fff',
+                    color: showFilters ? '#2563eb' : '#374151',
+                    fontWeight: showFilters ? 600 : 400,
+                  }}
+                >
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span
+                      data-testid="filter-badge"
+                      style={{
+                        marginLeft: 6,
+                        backgroundColor: '#2563eb',
+                        color: '#fff',
+                        borderRadius: 10,
+                        padding: '1px 6px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Clear all filters — only visible when filters are on and at least one is active */}
+                {showFilters && activeFilterCount > 0 && (
+                  <button
+                    data-testid="clear-filters"
+                    onClick={() => setColumnFilters([])}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      borderRadius: 4,
+                      border: '1px solid #fca5a5',
+                      backgroundColor: '#fff1f2',
+                      color: '#b91c1c',
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+
+              {/* Group by panel — large tap targets, no drag required */}
+              {showGroupPanel && (
               <div
                 data-testid="group-panel"
                 style={{
@@ -682,6 +679,7 @@ export function GroupableTable() {
             )}
           </div>
         )}
+        </div>{/* end accordion wrapper */}
 
         {/* Scroll container — flex:1 fills remaining viewport height */}
         <div

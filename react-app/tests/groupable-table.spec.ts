@@ -7,21 +7,29 @@ import { test, expect, type Page } from '@playwright/test';
 // ---------------------------------------------------------------------------
 async function dragInto(page: Page, sourceSelector: string, targetSelector: string) {
   const source = page.locator(sourceSelector);
-  const target = page.locator(targetSelector);
-
   const srcBox = await source.boundingBox();
-  const tgtBox = await target.boundingBox();
-  if (!srcBox || !tgtBox) throw new Error('Could not get bounding boxes for drag');
+  if (!srcBox) throw new Error('Could not get bounding box for drag source');
 
   const srcX = srcBox.x + srcBox.width / 2;
   const srcY = srcBox.y + srcBox.height / 2;
-  const tgtX = tgtBox.x + tgtBox.width / 2;
-  const tgtY = tgtBox.y + tgtBox.height / 2;
 
   await page.mouse.move(srcX, srcY);
   await page.mouse.down();
-  // Move in steps so MouseSensor's activationConstraint (distance:5) is satisfied
+  // Cross MouseSensor's activationConstraint (distance: 5) to fire onDragStart,
+  // which may open the accordion and bring the drop target into the DOM.
   await page.mouse.move(srcX + 3, srcY - 3, { steps: 3 });
+  await page.mouse.move(srcX + 6, srcY, { steps: 3 });
+
+  // Wait for the drop target — it may only appear after onDragStart (accordion opening).
+  const target = page.locator(targetSelector);
+  await target.waitFor({ state: 'visible', timeout: 2000 });
+
+  const tgtBox = await target.boundingBox();
+  if (!tgtBox) throw new Error('Could not get bounding box for drag target');
+
+  const tgtX = tgtBox.x + tgtBox.width / 2;
+  const tgtY = tgtBox.y + tgtBox.height / 2;
+
   await page.mouse.move(tgtX, tgtY, { steps: 20 });
   await page.mouse.up();
 }
@@ -72,6 +80,7 @@ test.describe('GroupableTable', () => {
 
   test('renders 500 total rows with no grouping', async ({ page }) => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+    await openToolbox(page);
     await expect(page.locator('[data-testid="group-band"]')).toContainText(
       'Drag a column header here to group by that column',
     );
