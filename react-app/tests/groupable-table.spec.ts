@@ -298,6 +298,23 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
   });
 
+  test('toggling filters off removes filtering but restores values when re-enabled', async ({ page }) => {
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await page.locator('[data-testid="filter-status"]').fill('Active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+    await expect(page.locator('[data-testid="filter-badge"]')).toContainText('1');
+
+    // Toggle off — all rows restored, badge gone
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('500 rows');
+    await expect(page.locator('[data-testid="filter-badge"]')).toHaveCount(0);
+
+    // Toggle back on — filtering resumes with the saved value
+    await page.locator('[data-testid="toggle-filters"]').click();
+    await expect(page.locator('[data-testid="filter-status"]')).toHaveValue('Active');
+    await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
+  });
+
   test('filtering combined with grouping updates group counts', async ({ page }) => {
     await tapGroupColumn(page, 'status');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('3 rows');
