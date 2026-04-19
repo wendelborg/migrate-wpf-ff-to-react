@@ -306,9 +306,6 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     [columns],
   );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const colIds = useMemo(() => table.getAllLeafColumns().map((col) => col.id), [columns]);
-
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
@@ -367,6 +364,10 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grouping]);
 
+  const colIds = useMemo(
+    () => columns.filter((col): col is typeof col & { id: string } => col.id != null).map((col) => col.id),
+    [columns],
+  );
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
   const activeFilterCount = showFilters ? columnFilters.length : 0;
