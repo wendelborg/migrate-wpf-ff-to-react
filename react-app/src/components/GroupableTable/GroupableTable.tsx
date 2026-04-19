@@ -357,7 +357,8 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grouping]);
 
-  const colCount = table.getAllLeafColumns().length + (rowActions ? 1 : 0);
+  const selectionActive = !!rowActions && selectedIds.size > 0;
+  const colCount = table.getAllLeafColumns().length + (selectionActive ? 1 : 0);
   const rows = table.getRowModel().rows;
   const activeFilterCount = showFilters ? columnFilters.length : 0;
   const leafRows = rows.filter((r) => !r.getIsGrouped());
@@ -566,7 +567,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
         onTouchEnd={rowActions ? handleTouchEnd : undefined}
         onTouchCancel={rowActions ? handleTouchEnd : undefined}
       >
-        {rowActions && (
+        {selectionActive && (
           <td style={{ width: 36, padding: '0 8px', verticalAlign: 'middle' }}>
             <input
               data-testid="row-checkbox"
@@ -768,7 +769,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
-                  {rowActions && (
+                  {selectionActive && (
                     <th style={{ width: 36, padding: '0 8px', backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
                       <input
                         data-testid="select-all-checkbox"
@@ -792,7 +793,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
 
               {showFilters && (
                 <tr style={{ backgroundColor: '#f9fafb' }}>
-                  {rowActions && <th style={{ width: 36 }} />}
+                  {selectionActive && <th style={{ width: 36 }} />}
                   {table.getHeaderGroups()[0]?.headers.map((header) => {
                     const canFilter = header.column.getCanFilter();
                     const filterValue = (header.column.getFilterValue() ?? '') as string;

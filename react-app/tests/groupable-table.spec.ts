@@ -363,31 +363,39 @@ test.describe('GroupableTable', () => {
   // Row selection
   // -------------------------------------------------------------------------
 
-  test('each data row has a checkbox', async ({ page }) => {
-    const checkboxes = page.locator('[data-testid="row-checkbox"]');
-    const count = await checkboxes.count();
-    expect(count).toBeGreaterThan(0);
-    expect(count).toBeLessThan(500); // virtualizer only renders visible slice
+  test('no checkboxes visible before anything is selected', async ({ page }) => {
+    await expect(page.locator('[data-testid="row-checkbox"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="select-all-checkbox"]')).toHaveCount(0);
   });
 
-  test('clicking a checkbox selects and deselects the row', async ({ page }) => {
-    const checkbox = page.locator('[data-testid="row-checkbox"]').first();
-    await expect(checkbox).not.toBeChecked();
-    await checkbox.click();
-    await expect(checkbox).toBeChecked();
-    await checkbox.click();
-    await expect(checkbox).not.toBeChecked();
+  test('right-clicking a row reveals the checkbox column', async ({ page }) => {
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    const count = await page.locator('[data-testid="row-checkbox"]').count();
+    expect(count).toBeGreaterThan(0);
+  });
+
+  test('deselecting the last row hides the checkbox column again', async ({ page }) => {
+    // Enter selection mode via right-click
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await page.keyboard.press('Escape'); // close menu
+    // Uncheck the one selected row
+    await page.locator('[data-testid="row-checkbox"]:checked').click();
+    await expect(page.locator('[data-testid="row-checkbox"]')).toHaveCount(0);
   });
 
   test('selected row gets a blue highlight', async ({ page }) => {
-    const row = page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first();
-    await row.locator('[data-testid="row-checkbox"]').click();
+    const row = page.locator('table tbody tr').first();
+    await row.click({ button: 'right' });
+    await page.keyboard.press('Escape');
     const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
     // #eff6ff = rgb(239, 246, 255)
     expect(bg).toBe('rgb(239, 246, 255)');
   });
 
   test('select-all selects all visible leaf rows', async ({ page }) => {
+    // Enter selection mode first, then use select-all
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await page.keyboard.press('Escape');
     await page.locator('[data-testid="select-all-checkbox"]').click();
     const checkboxes = page.locator('[data-testid="row-checkbox"]');
     const total = await checkboxes.count();
@@ -395,13 +403,12 @@ test.describe('GroupableTable', () => {
     expect(checked).toBe(total);
   });
 
-  test('select-all then click again deselects all', async ({ page }) => {
-    await page.locator('[data-testid="select-all-checkbox"]').click();
-    await page.locator('[data-testid="select-all-checkbox"]').click();
-    const checked = await page.locator('[data-testid="row-checkbox"]').evaluateAll(
-      (els) => els.filter((el) => (el as HTMLInputElement).checked).length,
-    );
-    expect(checked).toBe(0);
+  test('select-all then click again hides the column', async ({ page }) => {
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await page.keyboard.press('Escape');
+    await page.locator('[data-testid="select-all-checkbox"]').click(); // select all
+    await page.locator('[data-testid="select-all-checkbox"]').click(); // deselect all
+    await expect(page.locator('[data-testid="row-checkbox"]')).toHaveCount(0);
   });
 
   test('group rows have no checkbox', async ({ page }) => {
@@ -413,23 +420,22 @@ test.describe('GroupableTable', () => {
 
   test('right-clicking a row opens the context menu', async ({ page }) => {
     await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
-    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await page.locator('table tbody tr').first().click({ button: 'right' });
     await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
   });
 
-  test('right-clicking an unselected row selects it', async ({ page }) => {
-    const row = page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first();
-    const checkbox = row.locator('[data-testid="row-checkbox"]');
-    await expect(checkbox).not.toBeChecked();
+  test('right-clicking a row selects it and shows its checkbox as checked', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
     await row.click({ button: 'right' });
-    await expect(checkbox).toBeChecked();
+    await page.keyboard.press('Escape');
+    await expect(row.locator('[data-testid="row-checkbox"]')).toBeChecked();
   });
 
   test('clicking a context menu item fires the action and closes the menu', async ({ page }) => {
     const messages: string[] = [];
     page.on('console', (msg) => { if (msg.text().startsWith('[export]')) messages.push(msg.text()); });
 
-    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await page.locator('table tbody tr').first().click({ button: 'right' });
     await page.locator('[data-testid="context-menu-item-0"]').click();
 
     expect(messages.length).toBe(1);
@@ -437,7 +443,7 @@ test.describe('GroupableTable', () => {
   });
 
   test('Escape closes the context menu', async ({ page }) => {
-    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await page.locator('table tbody tr').first().click({ button: 'right' });
     await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
