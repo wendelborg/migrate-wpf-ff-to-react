@@ -434,6 +434,18 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     };
   }, [menu]);
 
+  // Suppress the native context-menu popup using a non-delegated listener so
+  // preventDefault fires at the element level — early enough for iOS to skip
+  // showing its callout before React's delegated handlers even run.
+  useEffect(() => {
+    if (!rowActions) return;
+    const el = tableContainerRef.current;
+    if (!el) return;
+    const suppress = (e: Event) => e.preventDefault();
+    el.addEventListener('contextmenu', suppress);
+    return () => el.removeEventListener('contextmenu', suppress);
+  }, [rowActions]);
+
   function handleRowClick(row: Row<TData>, e: globalThis.MouseEvent) {
     if (e.ctrlKey || e.metaKey) {
       setSelectedIds((prev) => {
