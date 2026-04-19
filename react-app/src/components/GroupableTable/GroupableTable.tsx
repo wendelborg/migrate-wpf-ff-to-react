@@ -476,12 +476,19 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     setSelectedIds(new Set());
   }
 
+  function copyRows(dataRows: TData[]) {
+    const colIds = table.getAllLeafColumns().map((col) => col.id);
+    const text = dataRows
+      .map((row) => colIds.map((id) => String(row[id] ?? '')).join('\t'))
+      .join('\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+
   function handleTouchStart(rowId: string, x: number, y: number) {
     if (!rowActions?.length) return;
     longPressPos.current = { x, y };
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
-      window.getSelection()?.removeAllRanges();
       const rowInSelection = selectedIds.has(rowId) || selectedRowId === rowId;
       setMenu({ x: 0, y: 0, mobile: true, rowId, rowInSelection });
     }, 500);
@@ -580,7 +587,6 @@ export function GroupableTable<TData extends Record<string, unknown>>({
           borderBottom: '1px solid #e5e7eb',
           backgroundColor: bgColor,
           userSelect: rowActions ? 'none' : undefined,
-          WebkitTouchCallout: rowActions ? 'none' : undefined,
           cursor: rowActions ? 'pointer' : undefined,
         }}
         onClick={rowActions ? (e) => handleRowClick(row, e.nativeEvent) : undefined}
@@ -890,6 +896,14 @@ export function GroupableTable<TData extends Record<string, unknown>>({
               </button>
             );
           })}
+          <button
+            role="menuitem"
+            data-testid="context-menu-copy"
+            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
+            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: '#374151' }}
+          >
+            {menuTargetRows.length > 1 ? `Copy (${menuTargetRows.length})` : 'Copy'}
+          </button>
           <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e5e7eb' }} />
           {!menu.rowInSelection && (
             <button
@@ -958,6 +972,13 @@ export function GroupableTable<TData extends Record<string, unknown>>({
               </button>
             );
           })}
+          <button
+            data-testid="context-menu-copy"
+            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
+            style={{ display: 'block', width: '100%', padding: '14px 24px', textAlign: 'left', background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#374151' }}
+          >
+            {menuTargetRows.length > 1 ? `Copy (${menuTargetRows.length})` : 'Copy'}
+          </button>
           {!menu.rowInSelection && (
             <button
               data-testid="context-menu-add-to-selection"
