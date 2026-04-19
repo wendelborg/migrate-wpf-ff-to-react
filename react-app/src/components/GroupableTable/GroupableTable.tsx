@@ -285,6 +285,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const menuRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
+  const preventSelectRef = useRef<((e: Event) => void) | null>(null);
 
   // Derived from the columns prop — stable as long as `columns` is a stable reference.
   const columnLabels = useMemo(
@@ -484,11 +485,22 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
+  function clearPreventSelect() {
+    if (preventSelectRef.current) {
+      document.removeEventListener('selectstart', preventSelectRef.current);
+      preventSelectRef.current = null;
+    }
+  }
+
   function handleTouchStart(rowId: string, x: number, y: number) {
     if (!rowActions?.length) return;
     longPressPos.current = { x, y };
+    const preventSelect = (e: Event) => e.preventDefault();
+    preventSelectRef.current = preventSelect;
+    document.addEventListener('selectstart', preventSelect);
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
+      clearPreventSelect();
       const rowInSelection = selectedIds.has(rowId) || selectedRowId === rowId;
       setMenu({ x: 0, y: 0, mobile: true, rowId, rowInSelection });
     }, 500);
@@ -503,6 +515,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     if (Math.sqrt(dx * dx + dy * dy) > 10) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
+      clearPreventSelect();
     }
   }
 
@@ -511,6 +524,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
+    clearPreventSelect();
   }
 
   function handleDragStart(): void {
@@ -587,6 +601,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
           borderBottom: '1px solid #e5e7eb',
           backgroundColor: bgColor,
           userSelect: rowActions ? 'none' : undefined,
+          WebkitTouchCallout: rowActions ? 'none' : undefined,
           cursor: rowActions ? 'pointer' : undefined,
         }}
         onClick={rowActions ? (e) => handleRowClick(row, e.nativeEvent) : undefined}
