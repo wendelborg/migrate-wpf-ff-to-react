@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useLayoutEffect, useMemo, type ReactNode, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type ChangeEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -40,6 +40,12 @@ import { CSS } from '@dnd-kit/utilities';
 // Estimated pixel heights for the virtualizer.
 const GROUP_ROW_HEIGHT = 40;
 const DATA_ROW_HEIGHT = 37;
+
+const MENU_ITEM_STYLE = {
+  display: 'block', width: '100%', padding: '10px 16px',
+  textAlign: 'left' as const, background: 'none', border: 'none',
+  fontSize: 14, cursor: 'pointer', color: '#374151',
+};
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -242,11 +248,21 @@ function GroupByBand({
 // GroupableTable
 // ---------------------------------------------------------------------------
 
+export interface RowAction<TData> {
+  label: string;
+  onClick: (rows: TData[]) => void;
+  disabled?: (rows: TData[]) => boolean;
+}
+
 export interface GroupableTableProps<TData extends Record<string, unknown>> {
   data: TData[];
   columns: ColumnDef<TData>[];
   title?: string;
   description?: string;
+  rowActions?: RowAction<TData>[];
+  getRowId?: (row: TData, index: number) => string;
+  onRowSelect?: (row: TData | null) => void;
+  onSelectionChange?: (rows: TData[]) => void;
 }
 
 export function GroupableTable<TData extends Record<string, unknown>>({
@@ -254,6 +270,10 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   columns,
   title,
   description,
+  rowActions,
+  getRowId,
+  onRowSelect,
+  onSelectionChange,
 }: GroupableTableProps<TData>) {
   const [grouping, setGrouping] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -262,7 +282,13 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const [showFilters, setShowFilters] = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const [showToolbox, setShowToolbox] = useState(false);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; rowId: string; rowInSelection: boolean } | null>(null);
+
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Derived from the columns prop — stable as long as `columns` is a stable reference.
   const columnLabels = useMemo(
@@ -308,6 +334,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getRowId,
     manualFiltering: true,
     enableSortingRemoval: true,
     autoResetExpanded: false,
@@ -337,9 +364,22 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grouping]);
 
+  const colIds = useMemo(
+    () => columns.filter((col): col is typeof col & { id: string } => col.id != null).map((col) => col.id),
+    [columns],
+  );
   const colCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
   const activeFilterCount = showFilters ? columnFilters.length : 0;
+  const leafRows = useMemo(() => rows.filter((r) => !r.getIsGrouped()), [rows]);
+
+  const menuTargetRows = useMemo(() => {
+    if (!menu) return [];
+    if (selectedIds.has(menu.rowId)) return leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original);
+    if (selectedRowId === menu.rowId) return leafRows.filter((r) => r.id === selectedRowId).map((r) => r.original);
+    const menuRow = leafRows.find((r) => r.id === menu.rowId);
+    return menuRow ? [menuRow.original] : [];
+  }, [menu, selectedIds, selectedRowId, leafRows]);
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -366,6 +406,90 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId],
     );
   }, []);
+
+  useEffect(() => {
+    const row = selectedRowId ? leafRows.find((r) => r.id === selectedRowId)?.original ?? null : null;
+    onRowSelect?.(row);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowId]);
+
+  useEffect(() => {
+    const selectedRows = leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original);
+    onSelectionChange?.(selectedRows);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds]);
+
+  // Close context menu on outside click, Escape, or table scroll
+  useEffect(() => {
+    if (!menu) return;
+    function closeOnOutside(e: globalThis.MouseEvent) {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenu(null);
+    }
+    function closeOnKey(e: globalThis.KeyboardEvent) {
+      if (e.key === 'Escape') setMenu(null);
+    }
+    function closeOnScroll() { setMenu(null); }
+    const container = tableContainerRef.current;
+    document.addEventListener('mousedown', closeOnOutside);
+    document.addEventListener('keydown', closeOnKey);
+    container?.addEventListener('scroll', closeOnScroll);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnKey);
+      container?.removeEventListener('scroll', closeOnScroll);
+    };
+  }, [menu]);
+
+  function handleRowClick(row: Row<TData>, e: globalThis.MouseEvent) {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+        return next;
+      });
+      setSelectedRowId(null);
+      setAnchorId(row.id);
+    } else if (e.shiftKey && anchorId) {
+      const anchorIdx = leafRows.findIndex((r) => r.id === anchorId);
+      const currentIdx = leafRows.findIndex((r) => r.id === row.id);
+      const [from, to] = anchorIdx <= currentIdx ? [anchorIdx, currentIdx] : [currentIdx, anchorIdx];
+      setSelectedIds((prev) => new Set([...prev, ...leafRows.slice(from, to + 1).map((r) => r.id)]));
+      setSelectedRowId(null);
+    } else {
+      setSelectedRowId((prev) => (prev === row.id ? null : row.id));
+      setSelectedIds(new Set());
+      setAnchorId(row.id);
+    }
+  }
+
+  function addToSelection(rowId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selectedRowId) next.add(selectedRowId);
+      next.add(rowId);
+      return next;
+    });
+    setSelectedRowId(null);
+    setAnchorId(rowId);
+  }
+
+  function removeFromSelection(rowId: string) {
+    if (selectedRowId === rowId) { setSelectedRowId(null); return; }
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
+  }
+
+  function unselectAll() {
+    setSelectedRowId(null);
+    setSelectedIds(new Set());
+  }
+
+  function copyRows(dataRows: TData[]) {
+    const text = dataRows
+      .map((row) => colIds.map((id) => String(row[id] ?? '')).join('\t'))
+      .join('\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
 
   function handleDragStart(): void {
     setShowToolbox(true);
@@ -433,8 +557,23 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       );
     }
 
+    const bgColor = selectedRowId === row.id ? '#dbeafe' : selectedIds.has(row.id) ? '#eff6ff' : undefined;
     return (
-      <tr key={row.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+      <tr
+        key={row.id}
+        style={{
+          borderBottom: '1px solid #e5e7eb',
+          backgroundColor: bgColor,
+          userSelect: rowActions ? 'none' : undefined,
+          cursor: rowActions ? 'pointer' : undefined,
+        }}
+        onClick={rowActions ? (e) => handleRowClick(row, e.nativeEvent) : undefined}
+        onContextMenu={rowActions ? (e) => {
+          e.preventDefault();
+          const rowInSelection = selectedIds.has(row.id) || selectedRowId === row.id;
+          setMenu({ x: e.clientX, y: e.clientY, rowId: row.id, rowInSelection });
+        } : undefined}
+      >
         {row.getVisibleCells().map((cell, cellIndex) => (
           <td
             key={cell.id}
@@ -688,6 +827,83 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       <p data-testid="row-total" style={{ marginTop: 8, fontSize: 12, color: '#9ca3af' }}>
         {rows.length} rows ({data.length} total)
       </p>
+
+      {menu && rowActions && (
+        <div
+          ref={menuRef}
+          role="menu"
+          data-testid="context-menu"
+          style={{
+            position: 'fixed',
+            top: Math.min(menu.y, window.innerHeight - 120),
+            left: Math.min(menu.x, window.innerWidth - 200),
+            backgroundColor: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 200,
+            minWidth: 180,
+            overflow: 'hidden',
+          }}
+        >
+          {rowActions.map((action, i) => {
+            const isDisabled = action.disabled?.(menuTargetRows) ?? false;
+            const label = menuTargetRows.length > 1 ? `${action.label} (${menuTargetRows.length})` : action.label;
+            return (
+              <button
+                key={i}
+                role="menuitem"
+                data-testid={`context-menu-item-${i}`}
+                disabled={isDisabled}
+                onClick={() => { action.onClick(menuTargetRows); setMenu(null); }}
+                style={isDisabled ? { ...MENU_ITEM_STYLE, cursor: 'default', color: '#9ca3af' } : MENU_ITEM_STYLE}
+              >
+                {label}
+              </button>
+            );
+          })}
+          <button
+            role="menuitem"
+            data-testid="context-menu-copy"
+            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
+            style={MENU_ITEM_STYLE}
+          >
+            {menuTargetRows.length > 1 ? `Copy (${menuTargetRows.length})` : 'Copy'}
+          </button>
+          <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e5e7eb' }} />
+          {!menu.rowInSelection && (
+            <button
+              role="menuitem"
+              data-testid="context-menu-add-to-selection"
+              onClick={() => { addToSelection(menu.rowId); setMenu(null); }}
+              style={MENU_ITEM_STYLE}
+            >
+              Add to selection
+            </button>
+          )}
+          {menu.rowInSelection && (
+            <button
+              role="menuitem"
+              data-testid="context-menu-remove-from-selection"
+              onClick={() => { removeFromSelection(menu.rowId); setMenu(null); }}
+              style={MENU_ITEM_STYLE}
+            >
+              Remove from selection
+            </button>
+          )}
+          {(selectedRowId !== null || selectedIds.size > 0) && (
+            <button
+              role="menuitem"
+              data-testid="context-menu-unselect-all"
+              onClick={() => { unselectAll(); setMenu(null); }}
+              style={MENU_ITEM_STYLE}
+            >
+              Unselect all
+            </button>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
