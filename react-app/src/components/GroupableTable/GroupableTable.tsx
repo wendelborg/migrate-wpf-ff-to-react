@@ -481,6 +481,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     longPressPos.current = { x, y };
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
+      window.getSelection()?.removeAllRanges();
       const rowInSelection = selectedIds.has(rowId) || selectedRowId === rowId;
       setMenu({ x: 0, y: 0, mobile: true, rowId, rowInSelection });
     }, 500);
@@ -579,6 +580,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
           borderBottom: '1px solid #e5e7eb',
           backgroundColor: bgColor,
           userSelect: rowActions ? 'none' : undefined,
+          WebkitTouchCallout: rowActions ? 'none' : undefined,
           cursor: rowActions ? 'pointer' : undefined,
         }}
         onClick={rowActions ? (e) => handleRowClick(row, e.nativeEvent) : undefined}
