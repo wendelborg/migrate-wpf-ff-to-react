@@ -1,197 +1,25 @@
-import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type CSSProperties, type ChangeEvent } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   getGroupedRowModel,
   getExpandedRowModel,
   getSortedRowModel,
+  getFilteredRowModel,
   flexRender,
   type ColumnDef,
-  type ExpandedState,
-  type Row,
-  type Header,
   type SortingState,
   type ColumnFiltersState,
+  type ExpandedState,
+  type GroupingState,
+  type Row,
+  type Column,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import {
-  DndContext,
-  closestCenter,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  useDroppable,
-  useDraggable,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  horizontalListSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable';
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import styles from './GroupableTable.module.css';
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-function cx(...classes: (string | undefined | false | null)[]): string {
-  return classes.filter(Boolean).join(' ');
-}
-
-function getColumnLabel<TData>(header: ColumnDef<TData>['header'], columnId: string): string {
-  return typeof header === 'string' && header.length > 0 ? header : columnId;
-}
-
-const GROUP_ROW_HEIGHT = 40;
-const DATA_ROW_HEIGHT  = 37;
-
-// ---------------------------------------------------------------------------
-// DraggableHeader
-// ---------------------------------------------------------------------------
-
-function DraggableHeader<TData>({
-  header,
-  isGrouped,
-}: {
-  header: Header<TData, unknown>;
-  isGrouped: boolean;
-}) {
-  const canGroup = header.column.columnDef.enableGrouping !== false;
-  const canSort  = header.column.getCanSort();
-  const sortDir  = header.column.getIsSorted();
-
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `col:${header.column.id}`,
-    disabled: !canGroup,
-  });
-
-  const colLabel = getColumnLabel(header.column.columnDef.header, header.column.id);
-  const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
-
-  return (
-    <th
-      ref={canGroup ? setNodeRef : undefined}
-      {...(canGroup ? attributes : {})}
-      {...(canGroup ? listeners : {})}
-      data-testid={canGroup ? `col-drag-${header.column.id}` : undefined}
-      title={canGroup ? 'Hold and drag to group, or use "Group by" panel' : undefined}
-      className={cx(
-        styles.th,
-        isGrouped  && styles.thGrouped,
-        !canGroup  && styles.thNoDrag,
-        isDragging && styles.thDragging,
-      )}
-    >
-      <button
-        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-        aria-label={`Sort by ${colLabel}`}
-        className={cx(styles.thBtn, canSort && styles.thBtnSortable)}
-      >
-        {isGrouped && <span className={styles.groupedIcon}>⊞</span>}
-        {flexRender(header.column.columnDef.header, header.getContext())}
-        {canSort && (
-          <span className={cx(styles.sortIcon, sortDir && styles.sortIconActive)}>
-            {sortIndicator || ' ⇅'}
-          </span>
-        )}
-      </button>
-    </th>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GroupChip
-// ---------------------------------------------------------------------------
-
-function GroupChip({
-  columnId,
-  label,
-  onRemove,
-}: {
-  columnId: string;
-  label: string;
-  onRemove: (id: string) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `chip:${columnId}`,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cx(styles.chip, isDragging && styles.chipDragging)}
-      style={{ transform: CSS.Transform.toString(transform) ?? undefined, transition }}
-      {...attributes}
-      {...listeners}
-    >
-      {label}
-      <button
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => onRemove(columnId)}
-        aria-label={`Remove ${label} grouping`}
-        className={styles.chipRemoveBtn}
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GroupByBand
-// ---------------------------------------------------------------------------
-
-function GroupByBand({
-  grouping,
-  columnLabels,
-  onRemove,
-}: {
-  grouping: string[];
-  columnLabels: Record<string, string>;
-  onRemove: (colId: string) => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'band:dropzone' });
-
-  return (
-    <div
-      ref={setNodeRef}
-      data-testid="group-band"
-      className={cx(
-        styles.groupBand,
-        grouping.length > 0 && styles.groupBandHasItems,
-        isOver && styles.groupBandOver,
-      )}
-    >
-      {grouping.length === 0 ? (
-        <span className={styles.groupBandPlaceholder}>
-          Drag a column header here to group by that column
-        </span>
-      ) : (
-        <SortableContext
-          items={grouping.map((id) => `chip:${id}`)}
-          strategy={horizontalListSortingStrategy}
-        >
-          {grouping.map((colId) => (
-            <GroupChip
-              key={colId}
-              columnId={colId}
-              label={columnLabels[colId] ?? colId}
-              onRemove={onRemove}
-            />
-          ))}
-        </SortableContext>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GroupableTable
-// ---------------------------------------------------------------------------
 
 export interface RowAction<TData> {
   label: string;
@@ -204,205 +32,221 @@ export interface GroupableTableProps<TData extends Record<string, unknown>> {
   columns: ColumnDef<TData>[];
   title?: string;
   description?: string;
-  rowActions?: RowAction<TData>[];
-  getRowId?: (row: TData, index: number) => string;
   onRowSelect?: (row: TData | null) => void;
   onSelectionChange?: (rows: TData[]) => void;
-  /** Applied to the root element — use to size/position the table or override CSS variables. */
+  rowActions?: RowAction<TData>[];
+  getRowId?: (row: TData, index: number) => string;
   className?: string;
-  /** Applied to the root element alongside className. */
-  style?: CSSProperties;
+  style?: React.CSSProperties;
 }
+
+function cx(...cs: (string | undefined | false | null)[]): string {
+  return cs.filter(Boolean).join(' ');
+}
+
+const ROW_H_DATA  = 37;
+const ROW_H_GROUP = 40;
+
+// ── Sortable chip ─────────────────────────────────────────────────────────────
+
+function SortableChip({ id, label, onRemove }: { id: string; label: string; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <span
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={cx(styles.chip, isDragging && styles.chipDragging)}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      {label}
+      <button
+        className={styles.chipRemoveBtn}
+        aria-label={`Remove ${label} grouping`}
+        onPointerDown={e => e.stopPropagation()}
+        onClick={onRemove}
+      >×</button>
+    </span>
+  );
+}
+
+// ── GroupableTable ────────────────────────────────────────────────────────────
 
 export function GroupableTable<TData extends Record<string, unknown>>({
   data,
   columns,
   title,
   description,
-  rowActions,
-  getRowId,
   onRowSelect,
   onSelectionChange,
+  rowActions,
+  getRowId,
   className,
   style,
 }: GroupableTableProps<TData>) {
-  const [grouping,       setGrouping]      = useState<string[]>([]);
-  const [expanded,       setExpanded]      = useState<ExpandedState>({});
-  const [sorting,        setSorting]       = useState<SortingState>([]);
-  const [columnFilters,  setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [showFilters,    setShowFilters]   = useState(false);
-  const [showGroupPanel, setShowGroupPanel] = useState(false);
-  const [showToolbox,    setShowToolbox]   = useState(false);
-  const [selectedRowId,  setSelectedRowId] = useState<string | null>(null);
-  const [selectedIds,    setSelectedIds]   = useState<Set<string>>(new Set());
-  const [anchorId,       setAnchorId]      = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; rowId: string; rowInSelection: boolean } | null>(null);
 
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const menuRef           = useRef<HTMLDivElement>(null);
+  // ── Panel state ─────────────────────────────────────────────────────────────
+  const [toolboxOpen,    setToolboxOpen]    = useState(false);
+  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
 
-  const columnLabels = useMemo(
-    () => Object.fromEntries(
-      columns
-        .filter((col): col is typeof col & { id: string } => col.id != null)
-        .map((col) => [col.id, getColumnLabel(col.header, col.id)]),
-    ),
-    [columns],
+  // ── Table state ─────────────────────────────────────────────────────────────
+  const [grouping,      setGrouping]      = useState<GroupingState>([]);
+  const [sorting,       setSorting]       = useState<SortingState>([]);
+  const [expanded,      setExpanded]      = useState<ExpandedState>({});
+  const [filterValues,  setFilterValues]  = useState<Record<string, string>>({});
+
+  // Apply filters only when the filter row is visible
+  const columnFilters = useMemo<ColumnFiltersState>(() =>
+    filtersVisible
+      ? Object.entries(filterValues).filter(([, v]) => v).map(([id, value]) => ({ id, value }))
+      : [],
+    [filtersVisible, filterValues],
   );
 
-  const groupableColumnIds = useMemo(
-    () => columns
-      .filter((col): col is typeof col & { id: string } => col.id != null && col.enableGrouping !== false)
-      .map((col) => col.id),
-    [columns],
-  );
+  // ── Selection state ─────────────────────────────────────────────────────────
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set());
+  const [anchorId,      setAnchorId]      = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-  );
+  // ── Context menu ────────────────────────────────────────────────────────────
+  const [menu, setMenu] = useState<{ x: number; y: number; rowId: string } | null>(null);
 
-  const filteredData = useMemo(() => {
-    if (!showFilters || columnFilters.length === 0) return data;
-    return data.filter((row) =>
-      columnFilters.every(({ id, value }) => {
-        const cell = String(row[id] ?? '').toLowerCase();
-        return cell.includes(String(value).toLowerCase());
-      }),
-    );
-  }, [data, showFilters, columnFilters]);
+  // ── DnD state for column→band (native HTML5) ────────────────────────────────
+  const [draggingColId, setDraggingColId] = useState<string | null>(null);
+  const [bandOver,      setBandOver]      = useState(false);
 
-  const table = useReactTable<TData>({
-    data: filteredData,
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Auto-expand on multi-level grouping ─────────────────────────────────────
+  useEffect(() => {
+    setExpanded(grouping.length >= 2 ? true : {});
+  }, [grouping]);
+
+  // ── TanStack Table ──────────────────────────────────────────────────────────
+  const table = useReactTable({
+    data,
     columns,
-    state: { grouping, expanded, sorting, columnFilters },
-    onGroupingChange:      setGrouping,
-    onExpandedChange:      setExpanded,
-    onSortingChange:       setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    state: { grouping, sorting, expanded, columnFilters },
+    getRowId: getRowId ? (row, idx) => getRowId(row, idx) : undefined,
+    onGroupingChange:    setGrouping,
+    onSortingChange:     setSorting,
+    onExpandedChange:    setExpanded,
     getCoreRowModel:     getCoreRowModel(),
     getGroupedRowModel:  getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getSortedRowModel:   getSortedRowModel(),
-    getRowId,
-    manualFiltering:      true,
-    enableSortingRemoval: true,
-    autoResetExpanded:    false,
-    groupedColumnMode:    false,
+    getFilteredRowModel: getFilteredRowModel(),
+    groupedColumnMode:   false,
+    autoResetExpanded:   false,
+    enableMultiSort:     false,
   });
 
-  // After every grouping change, expand non-leaf group levels only.
-  useLayoutEffect(() => {
-    if (grouping.length <= 1) {
-      setExpanded({});
-      return;
-    }
-    const leafDepth = grouping.length - 1;
-    const next: Record<string, boolean> = {};
-    function visit(rows: Row<TData>[]) {
-      for (const row of rows) {
-        if (!row.getIsGrouped()) continue;
-        if (row.depth < leafDepth) {
-          next[row.id] = true;
-          visit(row.subRows);
-        }
-      }
-    }
-    visit(table.getGroupedRowModel().rows);
-    setExpanded(next);
-  // table is intentionally omitted — grouping is the real trigger.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouping]);
+  const { rows } = table.getRowModel();
 
-  const colIds = useMemo(
-    () => columns.filter((col): col is typeof col & { id: string } => col.id != null).map((col) => col.id),
-    [columns],
+  const leafRows = useMemo(
+    () => rows.filter((r): r is Row<TData> => !r.getIsGrouped()),
+    [rows],
   );
-  const colCount          = table.getAllLeafColumns().length;
-  const rows              = table.getRowModel().rows;
-  const activeFilterCount = showFilters ? columnFilters.length : 0;
-  const leafRows          = useMemo(() => rows.filter((r) => !r.getIsGrouped()), [rows]);
 
-  const menuTargetRows = useMemo(() => {
-    if (!menu) return [];
-    if (selectedIds.has(menu.rowId))  return leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original);
-    if (selectedRowId === menu.rowId) return leafRows.filter((r) => r.id === selectedRowId).map((r) => r.original);
-    const menuRow = leafRows.find((r) => r.id === menu.rowId);
-    return menuRow ? [menuRow.original] : [];
-  }, [menu, selectedIds, selectedRowId, leafRows]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => tableContainerRef.current,
-    estimateSize: (index) => (rows[index]?.getIsGrouped() ? GROUP_ROW_HEIGHT : DATA_ROW_HEIGHT),
-    overscan: 10,
+  // ── Virtualizer ─────────────────────────────────────────────────────────────
+  const virtualizer = useVirtualizer({
+    count:           rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize:    i => rows[i]?.getIsGrouped() ? ROW_H_GROUP : ROW_H_DATA,
+    overscan:        10,
   });
 
-  const virtualItems     = rowVirtualizer.getVirtualItems();
-  const totalVirtualSize = rowVirtualizer.getTotalSize();
-  const paddingTop    = virtualItems.length > 0 ? (virtualItems[0]?.start ?? 0) : 0;
-  const paddingBottom = virtualItems.length > 0
-    ? totalVirtualSize - (virtualItems[virtualItems.length - 1]?.end ?? 0)
-    : 0;
+  const virtualItems  = virtualizer.getVirtualItems();
+  const totalSize     = virtualizer.getTotalSize();
+  const paddingTop    = virtualItems[0]?.start ?? 0;
+  const lastItem      = virtualItems[virtualItems.length - 1];
+  const paddingBottom = totalSize - (lastItem?.end ?? 0);
 
-  const handleRemoveGrouping = useCallback((colId: string) => setGrouping((prev) => prev.filter((id) => id !== colId)), []);
-  const handleToggleGrouping = useCallback((colId: string) => setGrouping((prev) => prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId]), []);
+  // ── Selection side-effects ──────────────────────────────────────────────────
+  const selectedRowData = useMemo(
+    () => leafRows.find(r => r.id === selectedRowId)?.original ?? null,
+    [leafRows, selectedRowId],
+  );
+  useEffect(() => { onRowSelect?.(selectedRowData); }, [selectedRowData, onRowSelect]);
 
-  useEffect(() => {
-    const row = selectedRowId ? leafRows.find((r) => r.id === selectedRowId)?.original ?? null : null;
-    onRowSelect?.(row);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowId]);
+  const selectedMultiData = useMemo(
+    () => leafRows.filter(r => selectedIds.has(r.id)).map(r => r.original),
+    [leafRows, selectedIds],
+  );
+  useEffect(() => { onSelectionChange?.(selectedMultiData); }, [selectedMultiData, onSelectionChange]);
 
-  useEffect(() => {
-    onSelectionChange?.(leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds]);
-
-  // Close context menu on outside click, Escape, or table scroll.
+  // ── Close menu on outside click / Escape ────────────────────────────────────
   useEffect(() => {
     if (!menu) return;
-    function closeOnOutside(e: globalThis.MouseEvent) {
-      if (menuRef.current?.contains(e.target as Node)) return;
-      setMenu(null);
-    }
-    function closeOnKey(e: globalThis.KeyboardEvent) { if (e.key === 'Escape') setMenu(null); }
-    function closeOnScroll() { setMenu(null); }
-    const container = tableContainerRef.current;
-    document.addEventListener('mousedown', closeOnOutside);
-    document.addEventListener('keydown',   closeOnKey);
-    container?.addEventListener('scroll', closeOnScroll);
+    const onPointer = () => setMenu(null);
+    const onKey     = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', closeOnOutside);
-      document.removeEventListener('keydown',   closeOnKey);
-      container?.removeEventListener('scroll', closeOnScroll);
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
     };
   }, [menu]);
 
-  function handleRowClick(row: Row<TData>, e: globalThis.MouseEvent) {
+  // ── Derived ─────────────────────────────────────────────────────────────────
+  const activeFilterCount = filtersVisible
+    ? Object.values(filterValues).filter(Boolean).length
+    : 0;
+  const hasSelection = selectedRowId !== null || selectedIds.size > 0;
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  function handleSort(col: Column<TData, unknown>) {
+    const s = col.getIsSorted();
+    setSorting(
+      !s           ? [{ id: col.id, desc: false }] :
+      s === 'asc'  ? [{ id: col.id, desc: true }]  :
+                     [],
+    );
+  }
+
+  function handleRowClick(row: Row<TData>, e: React.MouseEvent) {
+    if (!rowActions) return;
     if (e.ctrlKey || e.metaKey) {
-      setSelectedIds((prev) => {
+      setSelectedIds(prev => {
         const next = new Set(prev);
-        if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+        next.has(row.id) ? next.delete(row.id) : next.add(row.id);
         return next;
       });
       setSelectedRowId(null);
       setAnchorId(row.id);
     } else if (e.shiftKey && anchorId) {
-      const anchorIdx  = leafRows.findIndex((r) => r.id === anchorId);
-      const currentIdx = leafRows.findIndex((r) => r.id === row.id);
-      const [from, to] = anchorIdx <= currentIdx ? [anchorIdx, currentIdx] : [currentIdx, anchorIdx];
-      setSelectedIds((prev) => new Set([...prev, ...leafRows.slice(from, to + 1).map((r) => r.id)]));
+      const ai = leafRows.findIndex(r => r.id === anchorId);
+      const ci = leafRows.findIndex(r => r.id === row.id);
+      const [lo, hi] = ai <= ci ? [ai, ci] : [ci, ai];
+      setSelectedIds(prev => new Set([...prev, ...leafRows.slice(lo, hi + 1).map(r => r.id)]));
       setSelectedRowId(null);
     } else {
-      setSelectedRowId((prev) => (prev === row.id ? null : row.id));
+      setSelectedRowId(prev => prev === row.id ? null : row.id);
       setSelectedIds(new Set());
       setAnchorId(row.id);
     }
   }
 
+  function resolveTargets(rowId: string): TData[] {
+    if (selectedIds.has(rowId))  return leafRows.filter(r => selectedIds.has(r.id)).map(r => r.original);
+    if (selectedRowId === rowId) return leafRows.filter(r => r.id === rowId).map(r => r.original);
+    const row = leafRows.find(r => r.id === rowId);
+    return row ? [row.original] : [];
+  }
+
+  function copyAsText(targets: TData[]) {
+    const cols = table.getAllLeafColumns();
+    const text = targets
+      .map(row => cols.map(c => String(row[c.id] ?? '')).join('\t'))
+      .join('\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+    setMenu(null);
+  }
+
   function addToSelection(rowId: string) {
-    setSelectedIds((prev) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
       if (selectedRowId) next.add(selectedRowId);
       next.add(rowId);
@@ -410,305 +254,390 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     });
     setSelectedRowId(null);
     setAnchorId(rowId);
+    setMenu(null);
   }
 
   function removeFromSelection(rowId: string) {
-    if (selectedRowId === rowId) { setSelectedRowId(null); return; }
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
+    if (selectedRowId === rowId) setSelectedRowId(null);
+    setSelectedIds(prev => { const next = new Set(prev); next.delete(rowId); return next; });
+    setMenu(null);
   }
 
-  function unselectAll() {
-    setSelectedRowId(null);
-    setSelectedIds(new Set());
-  }
-
-  function copyRows(dataRows: TData[]) {
-    const text = dataRows.map((row) => colIds.map((id) => String(row[id] ?? '')).join('\t')).join('\n');
-    navigator.clipboard.writeText(text).catch(() => {});
-  }
-
-  function handleDragStart(): void { setShowToolbox(true); }
-
-  function handleDragEnd({ active, over }: DragEndEvent): void {
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId   = String(over.id);
-
-    if (activeId.startsWith('col:')) {
-      const colId = activeId.slice(4);
-      if (grouping.includes(colId)) return;
-      if (overId === 'band:dropzone') {
-        setGrouping((prev) => [...prev, colId]);
-        return;
-      }
-      if (overId.startsWith('chip:')) {
-        const targetColId = overId.slice(5);
-        const targetIdx   = grouping.indexOf(targetColId);
-        const insertAt    = targetIdx === -1 ? grouping.length : targetIdx;
-        setGrouping((prev) => { const next = [...prev]; next.splice(insertAt, 0, colId); return next; });
-        return;
-      }
-    }
-
-    if (activeId.startsWith('chip:') && overId.startsWith('chip:')) {
-      const fromCol  = activeId.slice(5);
-      const toCol    = overId.slice(5);
-      const oldIndex = grouping.indexOf(fromCol);
-      const newIndex = grouping.indexOf(toCol);
-      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-        setGrouping((prev) => arrayMove(prev, oldIndex, newIndex));
-      }
-    }
-  }
-
-  function renderRow(row: Row<TData>): ReactNode {
-    if (row.getIsGrouped()) {
-      const colId = row.groupingColumnId ?? '';
-      return (
-        <tr
-          key={row.id}
-          className={cx(styles.groupRow, row.depth % 2 === 0 ? styles.groupRowEven : styles.groupRowOdd)}
-          onClick={row.getToggleExpandedHandler()}
-        >
-          <td
-            colSpan={colCount}
-            className={styles.groupCell}
-            style={{ paddingLeft: 12 + row.depth * 20 }}
-          >
-            <span className={styles.groupExpander}>{row.getIsExpanded() ? '▼' : '▶'}</span>
-            {columnLabels[colId] ?? colId}: {String(row.groupingValue)}
-            <span className={styles.groupCount}>({row.subRows.length})</span>
-          </td>
-        </tr>
-      );
-    }
-
-    return (
-      <tr
-        key={row.id}
-        className={cx(
-          styles.dataRow,
-          rowActions && styles.dataRowClickable,
-          selectedRowId === row.id ? styles.dataRowSelected : selectedIds.has(row.id) ? styles.dataRowMulti : undefined,
-        )}
-        onClick={rowActions ? (e) => handleRowClick(row, e.nativeEvent) : undefined}
-        onContextMenu={rowActions ? (e) => {
-          e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, rowId: row.id, rowInSelection: selectedIds.has(row.id) || selectedRowId === row.id });
-        } : undefined}
-      >
-        {row.getVisibleCells().map((cell, cellIndex) => (
-          <td
-            key={cell.id}
-            className={styles.td}
-            style={{ paddingLeft: cellIndex === 0 ? 12 + row.depth * 20 : 12 }}
-          >
-            {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
-          </td>
-        ))}
-      </tr>
+  function toggleGroupCol(colId: string) {
+    setGrouping(prev =>
+      prev.includes(colId) ? prev.filter(id => id !== colId) : [...prev, colId],
     );
   }
 
+  // ── dnd-kit sensors (chip reorder only) ─────────────────────────────────────
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  function handleChipDragEnd({ active, over }: DragEndEvent) {
+    if (over && active.id !== over.id) {
+      setGrouping(prev =>
+        arrayMove(prev, prev.indexOf(String(active.id)), prev.indexOf(String(over.id))),
+      );
+    }
+  }
+
+  // ── Row background ───────────────────────────────────────────────────────────
+  function rowBg(rowId: string): string | undefined {
+    if (selectedRowId === rowId) return '#dbeafe';
+    if (selectedIds.has(rowId))  return '#eff6ff';
+    return undefined;
+  }
+
+  // ── Context menu targets (resolved from state at render time) ────────────────
+  const menuTargets    = menu ? resolveTargets(menu.rowId) : [];
+  const menuRowInSel   = menu ? (selectedIds.has(menu.rowId) || selectedRowId === menu.rowId) : false;
+  const leafColumns    = table.getAllLeafColumns();
+  const groupableCols  = leafColumns.filter(c => c.getCanGroup());
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className={cx(styles.root, className)} style={style}>
       {title       && <h1 className={styles.title}>{title}</h1>}
       {description && <p  className={styles.description}>{description}</p>}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className={styles.toolboxWrapper}>
-          <button
-            data-testid="toggle-toolbox"
-            onClick={() => setShowToolbox((v) => !v)}
-            className={cx(styles.toolboxToggle, showToolbox && styles.toolboxToggleOpen)}
-          >
-            <span>Group &amp; Filter</span>
-            <span style={{ fontSize: 12 }}>{showToolbox ? '▲' : '▼'}</span>
-          </button>
+      {/* ── Toolbox ── */}
+      <div className={styles.toolboxWrapper}>
+        <button
+          className={cx(styles.toolboxToggle, toolboxOpen && styles.toolboxToggleOpen)}
+          data-testid="toggle-toolbox"
+          onClick={() => setToolboxOpen(o => !o)}
+        >
+          Group &amp; Filter <span>{toolboxOpen ? '▲' : '▼'}</span>
+        </button>
 
-          {showToolbox && (
-            <div data-testid="toolbox" className={styles.toolboxBody}>
-              <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
+        {toolboxOpen && (
+          <div className={styles.toolboxBody} data-testid="toolbox">
 
-              <div className={cx(styles.toolboxActions, showGroupPanel && styles.toolboxActionsSpaced)}>
-                <button
-                  data-testid="toggle-group-panel"
-                  onClick={() => setShowGroupPanel((v) => !v)}
-                  className={cx(styles.panelBtn, showGroupPanel && styles.panelBtnActive)}
-                >
-                  Group by
-                  {grouping.length > 0 && (
-                    <span data-testid="group-badge" className={styles.badge}>{grouping.length}</span>
-                  )}
-                </button>
-
-                <button
-                  data-testid="toggle-filters"
-                  onClick={() => setShowFilters((v) => !v)}
-                  className={cx(styles.panelBtn, showFilters && styles.panelBtnActive)}
-                >
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span data-testid="filter-badge" className={styles.badge}>{activeFilterCount}</span>
-                  )}
-                </button>
-
-                {showFilters && activeFilterCount > 0 && (
-                  <button
-                    data-testid="clear-filters"
-                    onClick={() => setColumnFilters([])}
-                    className={styles.clearBtn}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-
-              {showGroupPanel && (
-                <div data-testid="group-panel" className={styles.groupPanel}>
-                  {groupableColumnIds.map((colId) => {
-                    const active = grouping.includes(colId);
+            {/* Group band — native HTML5 drop; dnd-kit inside for chip reorder */}
+            <div
+              className={cx(
+                styles.groupBand,
+                grouping.length > 0 && styles.groupBandHasItems,
+                bandOver && styles.groupBandOver,
+              )}
+              data-testid="group-band"
+              onDragOver={e  => { e.preventDefault(); setBandOver(true); }}
+              onDragLeave={() => setBandOver(false)}
+              onDrop={e => {
+                e.preventDefault();
+                setBandOver(false);
+                if (draggingColId && !grouping.includes(draggingColId))
+                  setGrouping(prev => [...prev, draggingColId]);
+              }}
+            >
+              {grouping.length === 0 && (
+                <span className={styles.groupBandPlaceholder}>
+                  Drag a column header here to group by that column
+                </span>
+              )}
+              <DndContext sensors={sensors} onDragEnd={handleChipDragEnd}>
+                <SortableContext items={grouping} strategy={horizontalListSortingStrategy}>
+                  {grouping.map(colId => {
+                    const col   = table.getColumn(colId);
+                    const label = typeof col?.columnDef.header === 'string'
+                      ? col.columnDef.header : colId;
                     return (
-                      <button
+                      <SortableChip
                         key={colId}
-                        data-testid={`group-panel-toggle-${colId}`}
-                        onClick={() => handleToggleGrouping(colId)}
-                        className={cx(styles.groupPanelItem, active && styles.groupPanelItemActive)}
-                      >
-                        <span style={{ flex: 1 }}>{columnLabels[colId] ?? colId}</span>
-                        {active && <span style={{ fontSize: 16, color: 'var(--gt-accent)' }}>✓</span>}
-                      </button>
+                        id={colId}
+                        label={label}
+                        onRemove={() => setGrouping(prev => prev.filter(id => id !== colId))}
+                      />
                     );
                   })}
-                </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+
+            {/* Action buttons */}
+            <div className={cx(styles.toolboxActions, styles.toolboxActionsSpaced)}>
+              <button
+                className={cx(styles.panelBtn, groupPanelOpen && styles.panelBtnActive)}
+                data-testid="toggle-group-panel"
+                onClick={() => setGroupPanelOpen(o => !o)}
+              >
+                Group by
+                {grouping.length > 0 && (
+                  <span className={styles.badge} data-testid="group-badge">
+                    {grouping.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                className={cx(styles.panelBtn, filtersVisible && styles.panelBtnActive)}
+                data-testid="toggle-filters"
+                onClick={() => setFiltersVisible(v => !v)}
+              >
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className={styles.badge} data-testid="filter-badge">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {filtersVisible && activeFilterCount > 0 && (
+                <button
+                  className={styles.clearBtn}
+                  data-testid="clear-filters"
+                  onClick={() => setFilterValues({})}
+                >
+                  Clear filters
+                </button>
               )}
             </div>
-          )}
-        </div>
 
-        <div ref={tableContainerRef} className={styles.tableContainer}>
-          <table className={styles.table}>
-            <thead className={styles.thead}>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <DraggableHeader
+            {/* Group by panel */}
+            {groupPanelOpen && (
+              <div className={styles.groupPanel} data-testid="group-panel">
+                {groupableCols.map(col => {
+                  const label  = typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id;
+                  const active = grouping.includes(col.id);
+                  return (
+                    <button
+                      key={col.id}
+                      className={cx(styles.groupPanelItem, active && styles.groupPanelItemActive)}
+                      data-testid={`group-panel-toggle-${col.id}`}
+                      onClick={() => toggleGroupCol(col.id)}
+                    >
+                      {active && <span>✓ </span>}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Table ── */}
+      <div
+        ref={scrollRef}
+        className={styles.tableContainer}
+        onScroll={() => menu && setMenu(null)}
+      >
+        <table className={styles.table}>
+          <thead className={styles.thead}>
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id}>
+                {hg.headers.map(header => {
+                  const col      = header.column;
+                  const canGroup = col.getCanGroup();
+                  const canSort  = col.getCanSort();
+                  const isGrp    = grouping.includes(col.id);
+                  const sorted   = col.getIsSorted();
+                  const label    = typeof col.columnDef.header === 'string'
+                    ? col.columnDef.header : col.id;
+                  return (
+                    <th
                       key={header.id}
-                      header={header}
-                      isGrouped={grouping.includes(header.column.id)}
+                      className={cx(
+                        styles.th,
+                        isGrp && styles.thGrouped,
+                        !canGroup && styles.thNoDrag,
+                        draggingColId === col.id && styles.thDragging,
+                      )}
+                      draggable={canGroup}
+                      onDragStart={() => {
+                        if (!canGroup) return;
+                        setDraggingColId(col.id);
+                        setToolboxOpen(true);
+                      }}
+                      onDragEnd={() => setDraggingColId(null)}
+                      data-testid={canGroup ? `col-drag-${col.id}` : undefined}
+                    >
+                      <button
+                        className={cx(styles.thBtn, canSort && styles.thBtnSortable)}
+                        aria-label={canSort ? `Sort by ${label}` : undefined}
+                        onClick={canSort ? () => handleSort(col) : undefined}
+                      >
+                        {isGrp && <span className={styles.groupedIcon}>⊞</span>}
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(col.columnDef.header, header.getContext())}
+                        {canSort && (
+                          <span className={cx(styles.sortIcon, sorted && styles.sortIconActive)}>
+                            {sorted === 'asc' ? '↑' : sorted === 'desc' ? '↓' : '⇅'}
+                          </span>
+                        )}
+                      </button>
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+
+            {filtersVisible && (
+              <tr className={styles.filterRow}>
+                {leafColumns.map(col => (
+                  <th key={col.id} className={styles.filterTh}>
+                    <input
+                      className={styles.filterInput}
+                      type="text"
+                      placeholder="Filter…"
+                      data-testid={`filter-${col.id}`}
+                      value={filterValues[col.id] ?? ''}
+                      onChange={e =>
+                        setFilterValues(prev => ({ ...prev, [col.id]: e.target.value }))
+                      }
                     />
+                  </th>
+                ))}
+              </tr>
+            )}
+          </thead>
+
+          <tbody>
+            {paddingTop > 0 && <tr style={{ height: paddingTop }}><td /></tr>}
+
+            {virtualItems.map(vItem => {
+              const row = rows[vItem.index]!;
+
+              if (row.getIsGrouped()) {
+                const gColId  = row.groupingColumnId!;
+                const gCol    = table.getColumn(gColId);
+                const gLabel  = typeof gCol?.columnDef.header === 'string' ? gCol.columnDef.header : gColId;
+                const depth   = row.depth;
+                const indent  = 12 + depth * 20;
+                const isExp   = row.getIsExpanded();
+                const cells   = row.getAllCells();
+
+                return (
+                  <tr
+                    key={row.id}
+                    className={cx(
+                      styles.groupRow,
+                      depth % 2 === 0 ? styles.groupRowEven : styles.groupRowOdd,
+                    )}
+                    onClick={() => row.toggleExpanded()}
+                    ref={virtualizer.measureElement}
+                    data-index={vItem.index}
+                  >
+                    <td className={styles.groupCell} style={{ paddingLeft: indent }}>
+                      <span className={styles.groupExpander}>{isExp ? '▼' : '▶'}</span>
+                      {gLabel}: {String(row.getGroupingValue(gColId))}
+                      <span className={styles.groupCount}>({row.subRows.length})</span>
+                    </td>
+                    {leafColumns.slice(1).map(col => {
+                      const cell = cells.find(c => c.column.id === col.id);
+                      return (
+                        <td key={col.id} className={styles.td}>
+                          {cell && col.columnDef.aggregatedCell
+                            ? flexRender(col.columnDef.aggregatedCell, cell.getContext())
+                            : null}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              }
+
+              // Data row
+              const indent = grouping.length > 0 ? 12 + row.depth * 20 : 12;
+              return (
+                <tr
+                  key={row.id}
+                  className={cx(
+                    styles.dataRow,
+                    rowActions && styles.dataRowClickable,
+                    selectedRowId === row.id
+                      ? styles.dataRowSelected
+                      : selectedIds.has(row.id) ? styles.dataRowMulti : undefined,
+                  )}
+                  style={{ backgroundColor: rowBg(row.id) }}
+                  onClick={e => handleRowClick(row, e)}
+                  onContextMenu={e => {
+                    if (!rowActions) return;
+                    e.preventDefault();
+                    setMenu({ x: e.clientX, y: e.clientY, rowId: row.id });
+                  }}
+                  ref={virtualizer.measureElement}
+                  data-index={vItem.index}
+                >
+                  {row.getVisibleCells().map((cell, ci) => (
+                    <td
+                      key={cell.id}
+                      className={styles.td}
+                      style={ci === 0 ? { paddingLeft: indent } : undefined}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
                   ))}
                 </tr>
-              ))}
+              );
+            })}
 
-              {showFilters && (
-                <tr className={styles.filterRow}>
-                  {table.getHeaderGroups()[0]?.headers.map((header) => {
-                    const canFilter   = header.column.getCanFilter();
-                    const filterValue = (header.column.getFilterValue() ?? '') as string;
-                    return (
-                      <th key={header.id} className={styles.filterTh}>
-                        {canFilter ? (
-                          <input
-                            data-testid={`filter-${header.column.id}`}
-                            value={filterValue}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                              header.column.setFilterValue(e.target.value || undefined)
-                            }
-                            placeholder="Filter…"
-                            aria-label={`Filter ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
-                            className={styles.filterInput}
-                          />
-                        ) : null}
-                      </th>
-                    );
-                  })}
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {paddingTop > 0 && (
-                <tr><td colSpan={colCount} style={{ height: paddingTop, padding: 0 }} /></tr>
-              )}
-              {virtualItems.map((virtualRow) => {
-                const row = rows[virtualRow.index];
-                if (!row) return null;
-                return renderRow(row);
-              })}
-              {paddingBottom > 0 && (
-                <tr><td colSpan={colCount} style={{ height: paddingBottom, padding: 0 }} /></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </DndContext>
+            {paddingBottom > 0 && <tr style={{ height: paddingBottom }}><td /></tr>}
+          </tbody>
+        </table>
+      </div>
 
-      <p data-testid="row-total" className={styles.rowTotal}>
+      {/* Row total */}
+      <div className={styles.rowTotal} data-testid="row-total">
         {rows.length} rows ({data.length} total)
-      </p>
+      </div>
 
-      {menu && rowActions && (
+      {/* Context menu */}
+      {menu && (
         <div
-          ref={menuRef}
-          role="menu"
-          data-testid="context-menu"
           className={styles.contextMenu}
-          style={{
-            top:  Math.min(menu.y, window.innerHeight - 120),
-            left: Math.min(menu.x, window.innerWidth  - 200),
-          }}
+          data-testid="context-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={e => e.stopPropagation()}
         >
-          {rowActions.map((action, i) => {
-            const isDisabled = action.disabled?.(menuTargetRows) ?? false;
-            const label = menuTargetRows.length > 1 ? `${action.label} (${menuTargetRows.length})` : action.label;
-            return (
-              <button
-                key={i}
-                role="menuitem"
-                data-testid={`context-menu-item-${i}`}
-                disabled={isDisabled}
-                onClick={() => { action.onClick(menuTargetRows); setMenu(null); }}
-                className={styles.menuItem}
-              >
-                {label}
-              </button>
-            );
-          })}
-          <button
-            role="menuitem"
-            data-testid="context-menu-copy"
-            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
-            className={styles.menuItem}
-          >
-            {menuTargetRows.length > 1 ? `Copy (${menuTargetRows.length})` : 'Copy'}
-          </button>
-          <hr className={styles.menuDivider} />
-          {!menu.rowInSelection && (
+          {rowActions?.map((action, i) => (
             <button
-              role="menuitem"
-              data-testid="context-menu-add-to-selection"
-              onClick={() => { addToSelection(menu.rowId); setMenu(null); }}
+              key={i}
               className={styles.menuItem}
+              data-testid={`context-menu-item-${i}`}
+              disabled={action.disabled?.(menuTargets) ?? false}
+              onClick={() => { action.onClick(menuTargets); setMenu(null); }}
+            >
+              {menuTargets.length > 1
+                ? `${action.label} (${menuTargets.length})`
+                : action.label}
+            </button>
+          ))}
+
+          <button
+            className={styles.menuItem}
+            data-testid="context-menu-copy"
+            onClick={() => copyAsText(menuTargets)}
+          >
+            Copy
+          </button>
+
+          <hr className={styles.menuDivider} />
+
+          {!menuRowInSel ? (
+            <button
+              className={styles.menuItem}
+              data-testid="context-menu-add-to-selection"
+              onClick={() => addToSelection(menu.rowId)}
             >
               Add to selection
             </button>
-          )}
-          {menu.rowInSelection && (
+          ) : (
             <button
-              role="menuitem"
-              data-testid="context-menu-remove-from-selection"
-              onClick={() => { removeFromSelection(menu.rowId); setMenu(null); }}
               className={styles.menuItem}
+              data-testid="context-menu-remove-from-selection"
+              onClick={() => removeFromSelection(menu.rowId)}
             >
               Remove from selection
             </button>
           )}
-          {(selectedRowId !== null || selectedIds.size > 0) && (
+
+          {hasSelection && (
             <button
-              role="menuitem"
-              data-testid="context-menu-unselect-all"
-              onClick={() => { unselectAll(); setMenu(null); }}
               className={styles.menuItem}
+              data-testid="context-menu-unselect-all"
+              onClick={() => { setSelectedRowId(null); setSelectedIds(new Set()); setMenu(null); }}
             >
               Unselect all
             </button>
