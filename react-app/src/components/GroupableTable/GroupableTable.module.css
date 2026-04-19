@@ -1,0 +1,304 @@
+/* ── Theme tokens — override any of these on .root or a parent ────────────── */
+.root {
+  --gt-accent:          #2563eb;
+  --gt-accent-bg:       #eff6ff;
+  --gt-accent-bg-solid: #dbeafe;
+  --gt-border:          #e5e7eb;
+  --gt-header-bg:       #f3f4f6;
+  --gt-text:            #374151;
+  --gt-text-muted:      #6b7280;
+  --gt-group-even:      #e8eaf6;
+  --gt-group-odd:       #ede7f6;
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+/* ── Title & description ──────────────────────────────────────────────────── */
+.title       { margin: 0 0 8px; }
+.description { margin: 0 0 12px; font-size: 14px; color: var(--gt-text-muted); }
+
+/* ── Toolbox accordion ────────────────────────────────────────────────────── */
+.toolboxWrapper {
+  flex-shrink: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.toolboxToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f8faff;
+  border: none;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gt-text);
+  font-family: inherit;
+}
+
+.toolboxToggleOpen { border-bottom-color: #e2e8f0; }
+
+.toolboxBody { padding: 12px; background: #fafafa; }
+
+.toolboxActions        { display: flex; justify-content: flex-end; gap: 8px; }
+.toolboxActionsSpaced  { margin-bottom: 8px; }
+
+/* ── Panel buttons (Group by / Filters) ───────────────────────────────────── */
+.panelBtn {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid var(--gt-border);
+  background: #fff;
+  color: var(--gt-text);
+  font-weight: 400;
+}
+
+.panelBtnActive {
+  border-color: var(--gt-accent);
+  background: var(--gt-accent-bg);
+  color: var(--gt-accent);
+  font-weight: 600;
+}
+
+.clearBtn {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  background: var(--gt-accent);
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Group panel list ─────────────────────────────────────────────────────── */
+.groupPanel {
+  margin-top: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.groupPanelItem {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 16px;
+  background: #fff;
+  border: none;
+  border-top: 1px solid #f1f5f9;
+  cursor: pointer;
+  gap: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--gt-text);
+  font-weight: 400;
+}
+
+.groupPanelItem:first-child { border-top: none; }
+
+.groupPanelItemActive {
+  background: var(--gt-accent-bg);
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* ── Group band (drop zone) ───────────────────────────────────────────────── */
+.groupBand {
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--gt-accent-bg);
+  border: 2px dashed #bfdbfe;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.groupBandHasItems { border-color: #93c5fd; }
+.groupBandOver     { background: #dcfce7; border-color: #16a34a; }
+
+.groupBandPlaceholder {
+  font-style: italic;
+  font-size: 13px;
+  color: #93c5fd;
+  pointer-events: none;
+}
+
+/* ── Group chip ───────────────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--gt-accent);
+  color: #fff;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: grab;
+  user-select: none;
+}
+
+.chipDragging { cursor: grabbing; opacity: 0.5; }
+
+.chipRemoveBtn {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  line-height: 1;
+  font-size: 16px;
+}
+
+/* ── Scrollable table container ───────────────────────────────────────────── */
+.tableContainer {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid var(--gt-border);
+  border-radius: 4px;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+.table    { border-collapse: collapse; width: 100%; min-width: 600px; }
+.thead    { position: sticky; top: 0; z-index: 1; }
+
+/* ── Header cells ─────────────────────────────────────────────────────────── */
+.th {
+  padding: 0;
+  text-align: left;
+  background: var(--gt-header-bg);
+  border-bottom: 2px solid var(--gt-border);
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+  cursor: grab;
+}
+
+.thGrouped {
+  background: var(--gt-accent-bg-solid);
+  border-bottom-color: var(--gt-accent);
+  font-weight: 700;
+}
+
+.thNoDrag   { cursor: default; }
+.thDragging { cursor: grabbing; opacity: 0.6; }
+
+.thBtn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: default;
+  font-weight: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+  user-select: none;
+}
+
+.thBtnSortable { cursor: pointer; }
+
+.sortIcon       { margin-left: 4px; font-size: 11px; color: var(--gt-text-muted); }
+.sortIconActive { color: var(--gt-accent); }
+.groupedIcon    { margin-right: 4px; color: var(--gt-accent); }
+
+/* ── Filter row ───────────────────────────────────────────────────────────── */
+.filterRow { background: #f9fafb; }
+
+.filterTh { padding: 4px 8px; font-weight: 400; }
+
+.filterInput {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--gt-border);
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* ── Group rows ───────────────────────────────────────────────────────────── */
+.groupRow     { cursor: pointer; }
+.groupRowEven { background: var(--gt-group-even); }
+.groupRowOdd  { background: var(--gt-group-odd); }
+
+.groupCell     { padding: 6px 12px; font-weight: 600; }
+.groupExpander { margin-right: 8px; font-size: 11px; }
+.groupCount    { margin-left: 8px; color: var(--gt-text-muted); font-weight: 400; font-size: 13px; }
+
+/* ── Data rows ────────────────────────────────────────────────────────────── */
+.dataRow          { border-bottom: 1px solid var(--gt-border); }
+.dataRowClickable { cursor: pointer; user-select: none; }
+.dataRowSelected  { background: var(--gt-accent-bg-solid); }
+.dataRowMulti     { background: var(--gt-accent-bg); }
+
+.td { padding: 6px 12px; }
+
+/* ── Row total ────────────────────────────────────────────────────────────── */
+.rowTotal { flex-shrink: 0; margin-top: 8px; font-size: 12px; color: var(--gt-text-muted); }
+
+/* ── Context menu ─────────────────────────────────────────────────────────── */
+.contextMenu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 200;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--gt-text);
+}
+
+.menuItem:disabled { cursor: default; color: var(--gt-text-muted); }
+
+.menuDivider { margin: 4px 0; border: none; border-top: 1px solid var(--gt-border); }

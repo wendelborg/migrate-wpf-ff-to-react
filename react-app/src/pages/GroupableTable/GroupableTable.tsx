@@ -74,14 +74,16 @@ const ROW_ACTIONS: RowAction<Order>[] = [
 
 export function OrdersTable() {
   return (
-    <GroupableTable<Order>
-      data={ORDER_DATA}
-      columns={COLUMNS}
-      title="Orders"
-      description="Expand the panel below to group and filter. Click column headers to sort."
-      rowActions={ROW_ACTIONS}
-      getRowId={(row) => String(row.id)}
-      onRowSelect={(row) => console.log('[row-select]', row?.id ?? null)}
-    />
+    <div style={{ height: '100vh', padding: 24, boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
+      <GroupableTable<Order>
+        data={ORDER_DATA}
+        columns={COLUMNS}
+        title="Orders"
+        description="Expand the panel below to group and filter. Click column headers to sort."
+        rowActions={ROW_ACTIONS}
+        getRowId={(row) => String(row.id)}
+        onRowSelect={(row) => console.log('[row-select]', row?.id ?? null)}
+      />
+    </div>
   );
 }
