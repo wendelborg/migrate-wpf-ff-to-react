@@ -359,6 +359,90 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
+  // -------------------------------------------------------------------------
+  // Row selection
+  // -------------------------------------------------------------------------
+
+  test('each data row has a checkbox', async ({ page }) => {
+    const checkboxes = page.locator('[data-testid="row-checkbox"]');
+    const count = await checkboxes.count();
+    expect(count).toBeGreaterThan(0);
+    expect(count).toBeLessThan(500); // virtualizer only renders visible slice
+  });
+
+  test('clicking a checkbox selects and deselects the row', async ({ page }) => {
+    const checkbox = page.locator('[data-testid="row-checkbox"]').first();
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.click();
+    await expect(checkbox).toBeChecked();
+    await checkbox.click();
+    await expect(checkbox).not.toBeChecked();
+  });
+
+  test('selected row gets a blue highlight', async ({ page }) => {
+    const row = page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first();
+    await row.locator('[data-testid="row-checkbox"]').click();
+    const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // #eff6ff = rgb(239, 246, 255)
+    expect(bg).toBe('rgb(239, 246, 255)');
+  });
+
+  test('select-all selects all visible leaf rows', async ({ page }) => {
+    await page.locator('[data-testid="select-all-checkbox"]').click();
+    const checkboxes = page.locator('[data-testid="row-checkbox"]');
+    const total = await checkboxes.count();
+    const checked = await checkboxes.evaluateAll((els) => els.filter((el) => (el as HTMLInputElement).checked).length);
+    expect(checked).toBe(total);
+  });
+
+  test('select-all then click again deselects all', async ({ page }) => {
+    await page.locator('[data-testid="select-all-checkbox"]').click();
+    await page.locator('[data-testid="select-all-checkbox"]').click();
+    const checked = await page.locator('[data-testid="row-checkbox"]').evaluateAll(
+      (els) => els.filter((el) => (el as HTMLInputElement).checked).length,
+    );
+    expect(checked).toBe(0);
+  });
+
+  test('group rows have no checkbox', async ({ page }) => {
+    await tapGroupColumn(page, 'status');
+    // Group header rows should not contain a row-checkbox
+    const groupRows = page.locator('table tbody tr').filter({ hasNot: page.locator('[data-testid="row-checkbox"]') });
+    await expect(groupRows.first()).toContainText('Status:');
+  });
+
+  test('right-clicking a row opens the context menu', async ({ page }) => {
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
+  });
+
+  test('right-clicking an unselected row selects it', async ({ page }) => {
+    const row = page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first();
+    const checkbox = row.locator('[data-testid="row-checkbox"]');
+    await expect(checkbox).not.toBeChecked();
+    await row.click({ button: 'right' });
+    await expect(checkbox).toBeChecked();
+  });
+
+  test('clicking a context menu item fires the action and closes the menu', async ({ page }) => {
+    const messages: string[] = [];
+    page.on('console', (msg) => { if (msg.text().startsWith('[export]')) messages.push(msg.text()); });
+
+    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-item-0"]').click();
+
+    expect(messages.length).toBe(1);
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+  });
+
+  test('Escape closes the context menu', async ({ page }) => {
+    await page.locator('table tbody tr').filter({ has: page.locator('[data-testid="row-checkbox"]') }).first().click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+  });
+
   test('filtering combined with grouping updates group counts', async ({ page }) => {
     await tapGroupColumn(page, 'status');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('3 rows');

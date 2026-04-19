@@ -1,5 +1,5 @@
 import { type ColumnDef } from '@tanstack/react-table';
-import { GroupableTable } from '../../components/GroupableTable';
+import { GroupableTable, type RowAction } from '../../components/GroupableTable';
 
 // ---------------------------------------------------------------------------
 // Types & data
@@ -66,6 +66,12 @@ const COLUMNS: ColumnDef<Order>[] = [
 // Page component
 // ---------------------------------------------------------------------------
 
+const ROW_ACTIONS: RowAction<Order>[] = [
+  { label: 'Export',         onClick: (rows) => console.log('[export]', rows.map((r) => r.id)) },
+  { label: 'Mark as Closed', onClick: (rows) => console.log('[mark-closed]', rows.map((r) => r.id)),
+    disabled: (rows) => rows.every((r) => r.status === 'Closed') },
+];
+
 export function OrdersTable() {
   return (
     <GroupableTable<Order>
@@ -73,6 +79,8 @@ export function OrdersTable() {
       columns={COLUMNS}
       title="Orders"
       description="Expand the panel below to group and filter. Click column headers to sort."
+      rowActions={ROW_ACTIONS}
+      getRowId={(row) => String(row.id)}
     />
   );
 }
