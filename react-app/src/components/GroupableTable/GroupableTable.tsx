@@ -624,6 +624,8 @@ export function GroupableTable<TData extends Record<string, unknown>>({
             style={{
               padding: '6px 12px',
               paddingLeft: cellIndex === 0 ? 12 + row.depth * 20 : 12,
+              userSelect: rowActions ? 'none' : undefined,
+              WebkitTouchCallout: rowActions ? 'none' : undefined,
             }}
           >
             {cell.getIsPlaceholder()
