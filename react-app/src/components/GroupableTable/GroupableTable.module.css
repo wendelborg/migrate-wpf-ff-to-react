@@ -270,6 +270,7 @@
 .dataRowMulti     { background: var(--gt-accent-bg); }
 
 .td { padding: 6px 12px; }
+.tdSelected { outline: 2px solid var(--gt-accent); outline-offset: -2px; }
 
 /* ── Row total ────────────────────────────────────────────────────────────── */
 .rowTotal { flex-shrink: 0; margin-top: 8px; font-size: 12px; color: var(--gt-text-muted); }

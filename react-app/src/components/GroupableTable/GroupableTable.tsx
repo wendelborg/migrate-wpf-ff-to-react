@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type CSSProperties, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type CSSProperties, type ChangeEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -236,6 +236,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const [selectedRowId,  setSelectedRowId] = useState<string | null>(null);
   const [selectedIds,    setSelectedIds]   = useState<Set<string>>(new Set());
   const [anchorId,       setAnchorId]      = useState<string | null>(null);
+  const [selectedCell,   setSelectedCell]  = useState<{ rowId: string; colId: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; rowId: string; rowInSelection: boolean } | null>(null);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -379,6 +380,23 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     };
   }, [menu]);
 
+  // Ctrl+C / Cmd+C: copy selected cell value to clipboard.
+  useEffect(() => {
+    if (!rowActions) return;
+    function handleCopy(e: globalThis.KeyboardEvent) {
+      if (!(e.key === 'c' && (e.ctrlKey || e.metaKey))) return;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if (!selectedCell) return;
+      const row = leafRows.find((r) => r.id === selectedCell.rowId);
+      if (!row) return;
+      const value = String(row.original[selectedCell.colId] ?? '');
+      navigator.clipboard.writeText(value).catch(() => {});
+    }
+    document.addEventListener('keydown', handleCopy);
+    return () => document.removeEventListener('keydown', handleCopy);
+  }, [rowActions, selectedCell, leafRows]);
+
   function handleRowClick(row: Row<TData>, e: globalThis.MouseEvent) {
     if (e.ctrlKey || e.metaKey) {
       setSelectedIds((prev) => {
@@ -387,6 +405,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
         return next;
       });
       setSelectedRowId(null);
+      setSelectedCell(null);
       setAnchorId(row.id);
     } else if (e.shiftKey && anchorId) {
       const anchorIdx  = leafRows.findIndex((r) => r.id === anchorId);
@@ -394,10 +413,27 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       const [from, to] = anchorIdx <= currentIdx ? [anchorIdx, currentIdx] : [currentIdx, anchorIdx];
       setSelectedIds((prev) => new Set([...prev, ...leafRows.slice(from, to + 1).map((r) => r.id)]));
       setSelectedRowId(null);
+      setSelectedCell(null);
     } else {
-      setSelectedRowId((prev) => (prev === row.id ? null : row.id));
+      setSelectedRowId((prev) => {
+        const next = prev === row.id ? null : row.id;
+        if (next === null) setSelectedCell(null);
+        return next;
+      });
       setSelectedIds(new Set());
       setAnchorId(row.id);
+    }
+  }
+
+  function handleCellClick(row: Row<TData>, colId: string, e: ReactMouseEvent<HTMLTableCellElement>) {
+    e.stopPropagation();
+    // Perform row-level selection using the same logic as handleRowClick.
+    handleRowClick(row, e.nativeEvent);
+    // Toggle cell selection (only for simple single-click, not Ctrl/Shift).
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      setSelectedCell((prev) =>
+        prev && prev.rowId === row.id && prev.colId === colId ? null : { rowId: row.id, colId },
+      );
     }
   }
 
@@ -413,13 +449,15 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   }
 
   function removeFromSelection(rowId: string) {
-    if (selectedRowId === rowId) { setSelectedRowId(null); return; }
+    if (selectedRowId === rowId) { setSelectedRowId(null); setSelectedCell(null); return; }
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
+    setSelectedCell((prev) => prev?.rowId === rowId ? null : prev);
   }
 
   function unselectAll() {
     setSelectedRowId(null);
     setSelectedIds(new Set());
+    setSelectedCell(null);
   }
 
   function copyRows(dataRows: TData[]) {
@@ -497,15 +535,20 @@ export function GroupableTable<TData extends Record<string, unknown>>({
           setMenu({ x: e.clientX, y: e.clientY, rowId: row.id, rowInSelection: selectedIds.has(row.id) || selectedRowId === row.id });
         } : undefined}
       >
-        {row.getVisibleCells().map((cell, cellIndex) => (
-          <td
-            key={cell.id}
-            className={styles.td}
-            style={{ paddingLeft: cellIndex === 0 ? 12 + row.depth * 20 : 12 }}
-          >
-            {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
-          </td>
-        ))}
+        {row.getVisibleCells().map((cell, cellIndex) => {
+          const isCellSelected = rowActions != null &&
+            selectedCell?.rowId === row.id && selectedCell?.colId === cell.column.id;
+          return (
+            <td
+              key={cell.id}
+              className={cx(styles.td, isCellSelected && styles.tdSelected)}
+              style={{ paddingLeft: cellIndex === 0 ? 12 + row.depth * 20 : 12 }}
+              onClick={rowActions ? (e) => handleCellClick(row, cell.column.id, e) : undefined}
+            >
+              {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </td>
+          );
+        })}
       </tr>
     );
   }
@@ -674,6 +717,14 @@ export function GroupableTable<TData extends Record<string, unknown>>({
               </button>
             );
           })}
+          <button
+            role="menuitem"
+            data-testid="context-menu-copy-row"
+            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
+            className={styles.menuItem}
+          >
+            {menuTargetRows.length > 1 ? `Copy row (${menuTargetRows.length})` : 'Copy row'}
+          </button>
           <button
             role="menuitem"
             data-testid="context-menu-copy"
