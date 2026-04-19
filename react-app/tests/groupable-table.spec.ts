@@ -359,6 +359,155 @@ test.describe('GroupableTable', () => {
     await expect(page.locator('[data-testid="row-total"]')).toContainText('167 rows');
   });
 
+  // -------------------------------------------------------------------------
+  // Row selection
+  // -------------------------------------------------------------------------
+
+  test('clicking a row selects it (solid blue-100 highlight)', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
+    await row.click();
+    const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // #dbeafe = rgb(219, 234, 254)
+    expect(bg).toBe('rgb(219, 234, 254)');
+  });
+
+  test('clicking a selected row deselects it', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
+    await row.click();
+    await row.click();
+    const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe('rgb(219, 234, 254)');
+    expect(bg).not.toBe('rgb(239, 246, 255)');
+  });
+
+  test('clicking a different row moves the selection', async ({ page }) => {
+    const first = page.locator('table tbody tr').first();
+    const second = page.locator('table tbody tr').nth(1);
+    await first.click();
+    await second.click();
+    const firstBg = await first.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const secondBg = await second.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(firstBg).not.toBe('rgb(219, 234, 254)');
+    expect(secondBg).toBe('rgb(219, 234, 254)');
+  });
+
+  test('right-clicking a row opens the context menu', async ({ page }) => {
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
+  });
+
+  test('right-click an unselected row shows "Add to selection"', async ({ page }) => {
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu-add-to-selection"]')).toBeVisible();
+    await expect(page.locator('[data-testid="context-menu-remove-from-selection"]')).toHaveCount(0);
+  });
+
+  test('"Add to selection" highlights the row in multi-select style', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
+    await row.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-add-to-selection"]').click();
+    const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // #eff6ff = rgb(239, 246, 255)
+    expect(bg).toBe('rgb(239, 246, 255)');
+  });
+
+  test('right-click a multi-selected row shows "Remove from selection"', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
+    await row.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-add-to-selection"]').click();
+    await row.click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu-remove-from-selection"]')).toBeVisible();
+    await expect(page.locator('[data-testid="context-menu-add-to-selection"]')).toHaveCount(0);
+  });
+
+  test('"Remove from selection" deselects the row', async ({ page }) => {
+    const row = page.locator('table tbody tr').first();
+    await row.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-add-to-selection"]').click();
+    await row.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-remove-from-selection"]').click();
+    const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe('rgb(239, 246, 255)');
+    expect(bg).not.toBe('rgb(219, 234, 254)');
+  });
+
+  test('"Unselect all" clears every selection', async ({ page }) => {
+    const first = page.locator('table tbody tr').first();
+    const second = page.locator('table tbody tr').nth(1);
+    await first.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-add-to-selection"]').click();
+    await second.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-add-to-selection"]').click();
+    await first.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-unselect-all"]').click();
+    const firstBg = await first.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const secondBg = await second.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(firstBg).not.toBe('rgb(239, 246, 255)');
+    expect(secondBg).not.toBe('rgb(239, 246, 255)');
+  });
+
+  test('Ctrl+click a second row enters multi-select', async ({ page }) => {
+    const first = page.locator('table tbody tr').first();
+    const second = page.locator('table tbody tr').nth(1);
+    await first.click();
+    await second.click({ modifiers: ['Control'] });
+    const firstBg = await first.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const secondBg = await second.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // first: single-select cleared when Ctrl+click happened
+    expect(firstBg).not.toBe('rgb(219, 234, 254)');
+    // second: now in selectedIds → lighter blue
+    expect(secondBg).toBe('rgb(239, 246, 255)');
+  });
+
+  test('Shift+click selects a contiguous range', async ({ page }) => {
+    await page.locator('table tbody tr').first().click();
+    await page.locator('table tbody tr').nth(3).click({ modifiers: ['Shift'] });
+    // Rows 0..3 should all be in multi-select (lighter blue)
+    for (let i = 0; i <= 3; i++) {
+      const bg = await page.locator('table tbody tr').nth(i).evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg).toBe('rgb(239, 246, 255)');
+    }
+  });
+
+  test('right-click a single-selected row: rowActions target that row', async ({ page }) => {
+    const messages: string[] = [];
+    page.on('console', (msg) => { if (msg.text().startsWith('[export]')) messages.push(msg.text()); });
+
+    const row = page.locator('table tbody tr').first();
+    await row.click();
+    await row.click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-item-0"]').click();
+    expect(messages.length).toBe(1);
+  });
+
+  test('clicking a context menu item fires the action and closes the menu', async ({ page }) => {
+    const messages: string[] = [];
+    page.on('console', (msg) => { if (msg.text().startsWith('[export]')) messages.push(msg.text()); });
+
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await page.locator('[data-testid="context-menu-item-0"]').click();
+
+    expect(messages.length).toBe(1);
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+  });
+
+  test('Escape closes the context menu', async ({ page }) => {
+    await page.locator('table tbody tr').first().click({ button: 'right' });
+    await expect(page.locator('[data-testid="context-menu"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="context-menu"]')).toHaveCount(0);
+  });
+
+  test('group rows cannot be selected by click', async ({ page }) => {
+    await tapGroupColumn(page, 'status');
+    const groupRow = page.locator('table tbody tr').first();
+    await groupRow.click();
+    const bg = await groupRow.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe('rgb(219, 234, 254)');
+    expect(bg).not.toBe('rgb(239, 246, 255)');
+  });
+
   test('filtering combined with grouping updates group counts', async ({ page }) => {
     await tapGroupColumn(page, 'status');
     await expect(page.locator('[data-testid="row-total"]')).toContainText('3 rows');
