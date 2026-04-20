@@ -47,5 +47,11 @@ namespace WpfReactHost
             _windowManager.Navigate("ContentPageB", props);
             StatusText.Text = string.Format("Opened ContentPageB (orderId={0})", orderId);
         }
+
+        private void OpenGroupableTable_Click(object sender, RoutedEventArgs e)
+        {
+            _windowManager.Navigate("GroupableTable", new Dictionary<string, object>());
+            StatusText.Text = "Opened GroupableTable";
+        }
     }
 }

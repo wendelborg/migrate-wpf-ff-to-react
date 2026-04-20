@@ -135,6 +135,7 @@ namespace WpfReactHost.Hosting
             LoadingText.Foreground = System.Windows.Media.Brushes.Firebrick;
             LoadingText.TextWrapping = TextWrapping.Wrap;
             LoadingText.MaxWidth = 520;
+            LoadingText.Visibility = Visibility.Visible;
             Debug.WriteLine("[PageWindow] " + message);
         }
 

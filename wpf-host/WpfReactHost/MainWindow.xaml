@@ -11,6 +11,7 @@
             <RowDefinition Height="16" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -42,8 +43,15 @@
             </StackPanel>
         </GroupBox>
 
+        <!-- Open Groupable Table -->
+        <GroupBox Grid.Row="4" Header="Groupable Table" Padding="8" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Open Groupable Table" Click="OpenGroupableTable_Click" Padding="12,4" />
+            </StackPanel>
+        </GroupBox>
+
         <!-- Status -->
-        <TextBlock Grid.Row="5" x:Name="StatusText"
+        <TextBlock Grid.Row="6" x:Name="StatusText"
                    Text="Ready. Open a React page above."
                    Foreground="Gray" FontStyle="Italic" />
     </Grid>

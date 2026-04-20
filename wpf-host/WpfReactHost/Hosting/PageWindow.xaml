@@ -6,12 +6,12 @@
         WindowStartupLocation="CenterScreen">
 
     <Grid>
-        <!-- Status bar shown while WebView2 is initializing -->
+        <!-- Status text shown only for host-side errors -->
         <TextBlock x:Name="LoadingText"
-                   Text="Initializing WebView2..."
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
                    FontSize="14" Foreground="Gray"
+                   Visibility="Collapsed"
                    Panel.ZIndex="1" />
 
         <!-- The WebView2 control that hosts the React page -->

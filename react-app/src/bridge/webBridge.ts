@@ -11,6 +11,7 @@ import type { AppBridge } from './types';
 const PAGE_ROUTES: Record<string, string> = {
   ContentPageA: '/content-a',
   ContentPageB: '/content-b/:orderId',
+  GroupableTable: '/groupable-table',
 };
 
 function buildPath(route: string, params?: Record<string, unknown>): string {

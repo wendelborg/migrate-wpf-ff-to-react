@@ -21,6 +21,7 @@ namespace WpfReactHost.Hosting
             {
                 { "ContentPageA", "/content-a" },
                 { "ContentPageB", "/content-b/:orderId" },
+                { "GroupableTable", "/groupable-table" },
             };
 
         /// <summary>Build a URL path (and optional query string) for the given page + props.</summary>

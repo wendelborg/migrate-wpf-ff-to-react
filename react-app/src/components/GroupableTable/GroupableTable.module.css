@@ -17,9 +17,25 @@
   font-family: inherit;
 }
 
+.rootDragging { cursor: grabbing; }
+
 /* ── Title & description ──────────────────────────────────────────────────── */
 .title       { margin: 0 0 8px; }
 .description { margin: 0 0 12px; font-size: 14px; color: var(--gt-text-muted); }
+
+.dragHint {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 8px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 13px;
+}
 
 /* ── Toolbox accordion ────────────────────────────────────────────────────── */
 .toolboxWrapper {
@@ -146,6 +162,11 @@
 }
 
 .groupBandHasItems { border-color: #93c5fd; }
+.groupBandDragActive {
+  background: #ecfeff;
+  border-color: #06b6d4;
+  box-shadow: inset 0 0 0 1px #67e8f9;
+}
 .groupBandOver     { background: #dcfce7; border-color: #16a34a; }
 
 .groupBandPlaceholder {
@@ -170,7 +191,7 @@
   user-select: none;
 }
 
-.chipDragging { cursor: grabbing; opacity: 0.5; }
+.chipDragging { cursor: grabbing; opacity: 0.4; transform: scale(0.98); }
 
 .chipRemoveBtn {
   background: none;
@@ -215,7 +236,13 @@
 }
 
 .thNoDrag   { cursor: default; }
-.thDragging { cursor: grabbing; opacity: 0.6; }
+.thDragging {
+  cursor: grabbing;
+  opacity: 0.35;
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}
+
 
 .thBtn {
   display: block;

@@ -23,6 +23,7 @@ import {
   useSensors,
   useDroppable,
   useDraggable,
+  type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -149,10 +150,12 @@ function GroupByBand({
   grouping,
   columnLabels,
   onRemove,
+  isDragging,
 }: {
   grouping: string[];
   columnLabels: Record<string, string>;
   onRemove: (colId: string) => void;
+  isDragging: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: 'band:dropzone' });
 
@@ -163,6 +166,7 @@ function GroupByBand({
       className={cx(
         styles.groupBand,
         grouping.length > 0 && styles.groupBandHasItems,
+        isDragging && styles.groupBandDragActive,
         isOver && styles.groupBandOver,
       )}
     >
@@ -237,6 +241,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const [selectedIds,    setSelectedIds]   = useState<Set<string>>(new Set());
   const [anchorId,       setAnchorId]      = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; rowId: string; rowInSelection: boolean } | null>(null);
+  const [dragLabel, setDragLabel] = useState<string | null>(null);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const menuRef           = useRef<HTMLDivElement>(null);
@@ -427,9 +432,27 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
-  function handleDragStart(): void { setShowToolbox(true); }
+  function handleDragStart({ active }: DragStartEvent): void {
+    setShowToolbox(true);
+
+    const activeId = String(active.id);
+    if (activeId.startsWith('col:')) {
+      const colId = activeId.slice(4);
+      setDragLabel(columnLabels[colId] ?? colId);
+      return;
+    }
+
+    if (activeId.startsWith('chip:')) {
+      const colId = activeId.slice(5);
+      setDragLabel(columnLabels[colId] ?? colId);
+      return;
+    }
+
+    setDragLabel('Column');
+  }
 
   function handleDragEnd({ active, over }: DragEndEvent): void {
+    setDragLabel(null);
     if (!over) return;
     const activeId = String(active.id);
     const overId   = String(over.id);
@@ -511,9 +534,15 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   }
 
   return (
-    <div className={cx(styles.root, className)} style={style}>
+    <div className={cx(styles.root, dragLabel && styles.rootDragging, className)} style={style}>
       {title       && <h1 className={styles.title}>{title}</h1>}
       {description && <p  className={styles.description}>{description}</p>}
+
+      {dragLabel && (
+        <div className={styles.dragHint} role="status" aria-live="polite">
+          Dragging <strong>{dragLabel}</strong> - drop on "Group by" band to group.
+        </div>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className={styles.toolboxWrapper}>
@@ -528,7 +557,12 @@ export function GroupableTable<TData extends Record<string, unknown>>({
 
           {showToolbox && (
             <div data-testid="toolbox" className={styles.toolboxBody}>
-              <GroupByBand grouping={grouping} columnLabels={columnLabels} onRemove={handleRemoveGrouping} />
+              <GroupByBand
+                grouping={grouping}
+                columnLabels={columnLabels}
+                onRemove={handleRemoveGrouping}
+                isDragging={dragLabel !== null}
+              />
 
               <div className={cx(styles.toolboxActions, showGroupPanel && styles.toolboxActionsSpaced)}>
                 <button
