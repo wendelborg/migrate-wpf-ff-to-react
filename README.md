@@ -26,7 +26,12 @@ and a single deployment artifact in production.
 │   │   │   └── index.ts                # getBridge(), isEmbedded()
 │   │   ├── pages/
 │   │   │   ├── ContentPageA/ContentPageA.tsx
-│   │   │   └── ContentPageB/ContentPageB.tsx
+│   │   │   ├── ContentPageB/ContentPageB.tsx
+│   │   │   └── GroupableTable/
+│   │   │       ├── GroupableTable.tsx   # Orders page using the reusable component
+│   │   │       └── index.ts
+│   │   ├── components/
+│   │   │   └── GroupableTable/          # Reusable grouped/filterable/sortable table
 │   │   ├── App.tsx                     # Auto-detects embedded/SPA, hides chrome in embedded
 │   │   ├── main.tsx
 │   │   └── routes.tsx
@@ -55,9 +60,9 @@ and a single deployment artifact in production.
 ## How it works
 
 ```
-┌──────────── WPF MainWindow ──────────────────────────┐
-│  [Open Page A]  [Open Page B]                        │
-└──────────────────────┬───────────────────────────────┘
+┌──────────── WPF MainWindow ───────────────────────────────────────────┐
+│  [Open Page A]  [Open Page B]  [Open Groupable Table]                │
+└──────────────────────┬────────────────────────────────────────────────┘
                        │ _windowManager.Navigate("ContentPageA", {customerId:42})
                        ▼
                ┌─ WindowManager ──────────┐
@@ -111,6 +116,24 @@ npm run dev      # http://localhost:5173
 3. **F5**. From the main window, open pages — each opens a new WebView2
    window that navigates to the React URL.
 
+## Grouped table component
+
+The grouped table is implemented as a reusable component and a demo page:
+
+- Component: `react-app/src/components/GroupableTable/GroupableTable.tsx`
+- Demo page route: `/groupable-table` (`react-app/src/pages/GroupableTable/GroupableTable.tsx`)
+- Route registration: `react-app/src/routes.tsx`
+- WPF route mapping: `wpf-host/WpfReactHost/Hosting/PageRouter.cs` as `"GroupableTable" -> "/groupable-table"`
+- WPF launcher button: `wpf-host/WpfReactHost/MainWindow.xaml(.cs)`
+
+The component currently supports:
+
+- Drag-to-group via column headers and a group band
+- Reordering/removing grouping chips
+- Column sorting and filters
+- Virtualized rows for large datasets
+- Single/multi-row selection and context-menu row actions
+
 ### Configuring the React URL
 
 Edit `wpf-host/WpfReactHost/App.config`:
@@ -134,9 +157,12 @@ Edit `wpf-host/WpfReactHost/App.config`:
    ```csharp
    { "MyNewPage", "/my-new-page" },
    ```
-4. Call it from WPF:
+4. If the page should be reachable via `bridge.navigate(...)` in standalone SPA mode, add the same mapping in `react-app/src/bridge/webBridge.ts`:
+   ```ts
+   MyNewPage: '/my-new-page',
+   ```
+5. Call it from WPF:
    ```csharp
    _windowManager.Navigate("MyNewPage", props);
    ```
    or from another React page via `bridge.navigate('MyNewPage', ...)`.
-
