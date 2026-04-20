@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type CSSProperties, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useEffect, useMemo, type ReactNode, type CSSProperties } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,7 +9,6 @@ import {
   type ColumnDef,
   type ExpandedState,
   type Row,
-  type Header,
   type SortingState,
   type ColumnFiltersState,
 } from '@tanstack/react-table';
@@ -22,18 +21,20 @@ import {
   useSensor,
   useSensors,
   useDroppable,
-  useDraggable,
-  type DragStartEvent,
-  type DragEndEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
   useSortable,
   horizontalListSortingStrategy,
-  arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import styles from './GroupableTable.module.css';
+import { ToolboxPanel } from './subcomponents/ToolboxPanel';
+import { TableHeaderSection } from './subcomponents/TableHeaderSection';
+import { VirtualizedTableBody } from './subcomponents/VirtualizedTableBody';
+import { RowContextMenu } from './subcomponents/RowContextMenu';
+import { useRowSelection } from './hooks/useRowSelection';
+import { useGroupingDragDrop } from './hooks/useGroupingDragDrop';
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -49,60 +50,6 @@ function getColumnLabel<TData>(header: ColumnDef<TData>['header'], columnId: str
 
 const GROUP_ROW_HEIGHT = 40;
 const DATA_ROW_HEIGHT  = 37;
-
-// ---------------------------------------------------------------------------
-// DraggableHeader
-// ---------------------------------------------------------------------------
-
-function DraggableHeader<TData>({
-  header,
-  isGrouped,
-}: {
-  header: Header<TData, unknown>;
-  isGrouped: boolean;
-}) {
-  const canGroup = header.column.columnDef.enableGrouping !== false;
-  const canSort  = header.column.getCanSort();
-  const sortDir  = header.column.getIsSorted();
-
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `col:${header.column.id}`,
-    disabled: !canGroup,
-  });
-
-  const colLabel = getColumnLabel(header.column.columnDef.header, header.column.id);
-  const sortIndicator = sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : '';
-
-  return (
-    <th
-      ref={canGroup ? setNodeRef : undefined}
-      {...(canGroup ? attributes : {})}
-      {...(canGroup ? listeners : {})}
-      data-testid={canGroup ? `col-drag-${header.column.id}` : undefined}
-      title={canGroup ? 'Hold and drag to group, or use "Group by" panel' : undefined}
-      className={cx(
-        styles.th,
-        isGrouped  && styles.thGrouped,
-        !canGroup  && styles.thNoDrag,
-        isDragging && styles.thDragging,
-      )}
-    >
-      <button
-        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-        aria-label={`Sort by ${colLabel}`}
-        className={cx(styles.thBtn, canSort && styles.thBtnSortable)}
-      >
-        {isGrouped && <span className={styles.groupedIcon}>⊞</span>}
-        {flexRender(header.column.columnDef.header, header.getContext())}
-        {canSort && (
-          <span className={cx(styles.sortIcon, sortDir && styles.sortIconActive)}>
-            {sortIndicator || ' ⇅'}
-          </span>
-        )}
-      </button>
-    </th>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // GroupChip
@@ -237,11 +184,7 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const [showFilters,    setShowFilters]   = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const [showToolbox,    setShowToolbox]   = useState(false);
-  const [selectedRowId,  setSelectedRowId] = useState<string | null>(null);
-  const [selectedIds,    setSelectedIds]   = useState<Set<string>>(new Set());
-  const [anchorId,       setAnchorId]      = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; rowId: string; rowInSelection: boolean } | null>(null);
-  const [dragLabel, setDragLabel] = useState<string | null>(null);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const menuRef           = useRef<HTMLDivElement>(null);
@@ -328,13 +271,27 @@ export function GroupableTable<TData extends Record<string, unknown>>({
   const activeFilterCount = showFilters ? columnFilters.length : 0;
   const leafRows          = useMemo(() => rows.filter((r) => !r.getIsGrouped()), [rows]);
 
-  const menuTargetRows = useMemo(() => {
-    if (!menu) return [];
-    if (selectedIds.has(menu.rowId))  return leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original);
-    if (selectedRowId === menu.rowId) return leafRows.filter((r) => r.id === selectedRowId).map((r) => r.original);
-    const menuRow = leafRows.find((r) => r.id === menu.rowId);
-    return menuRow ? [menuRow.original] : [];
-  }, [menu, selectedIds, selectedRowId, leafRows]);
+  const {
+    selectedRowId,
+    selectedIds,
+    menuTargetRows,
+    handleRowClick,
+    addToSelection,
+    removeFromSelection,
+    unselectAll,
+  } = useRowSelection({
+    leafRows,
+    menu,
+    onRowSelect,
+    onSelectionChange,
+  });
+
+  const { dragLabel, handleDragStart, handleDragEnd } = useGroupingDragDrop({
+    grouping,
+    setGrouping,
+    columnLabels,
+    onBeforeDragStart: () => setShowToolbox(true),
+  });
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -352,17 +309,6 @@ export function GroupableTable<TData extends Record<string, unknown>>({
 
   const handleRemoveGrouping = useCallback((colId: string) => setGrouping((prev) => prev.filter((id) => id !== colId)), []);
   const handleToggleGrouping = useCallback((colId: string) => setGrouping((prev) => prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId]), []);
-
-  useEffect(() => {
-    const row = selectedRowId ? leafRows.find((r) => r.id === selectedRowId)?.original ?? null : null;
-    onRowSelect?.(row);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowId]);
-
-  useEffect(() => {
-    onSelectionChange?.(leafRows.filter((r) => selectedIds.has(r.id)).map((r) => r.original));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds]);
 
   // Close context menu on outside click, Escape, or table scroll.
   useEffect(() => {
@@ -384,104 +330,9 @@ export function GroupableTable<TData extends Record<string, unknown>>({
     };
   }, [menu]);
 
-  function handleRowClick(row: Row<TData>, e: globalThis.MouseEvent) {
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
-        return next;
-      });
-      setSelectedRowId(null);
-      setAnchorId(row.id);
-    } else if (e.shiftKey && anchorId) {
-      const anchorIdx  = leafRows.findIndex((r) => r.id === anchorId);
-      const currentIdx = leafRows.findIndex((r) => r.id === row.id);
-      const [from, to] = anchorIdx <= currentIdx ? [anchorIdx, currentIdx] : [currentIdx, anchorIdx];
-      setSelectedIds((prev) => new Set([...prev, ...leafRows.slice(from, to + 1).map((r) => r.id)]));
-      setSelectedRowId(null);
-    } else {
-      setSelectedRowId((prev) => (prev === row.id ? null : row.id));
-      setSelectedIds(new Set());
-      setAnchorId(row.id);
-    }
-  }
-
-  function addToSelection(rowId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (selectedRowId) next.add(selectedRowId);
-      next.add(rowId);
-      return next;
-    });
-    setSelectedRowId(null);
-    setAnchorId(rowId);
-  }
-
-  function removeFromSelection(rowId: string) {
-    if (selectedRowId === rowId) { setSelectedRowId(null); return; }
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
-  }
-
-  function unselectAll() {
-    setSelectedRowId(null);
-    setSelectedIds(new Set());
-  }
-
   function copyRows(dataRows: TData[]) {
     const text = dataRows.map((row) => colIds.map((id) => String(row[id] ?? '')).join('\t')).join('\n');
     navigator.clipboard.writeText(text).catch(() => {});
-  }
-
-  function handleDragStart({ active }: DragStartEvent): void {
-    setShowToolbox(true);
-
-    const activeId = String(active.id);
-    if (activeId.startsWith('col:')) {
-      const colId = activeId.slice(4);
-      setDragLabel(columnLabels[colId] ?? colId);
-      return;
-    }
-
-    if (activeId.startsWith('chip:')) {
-      const colId = activeId.slice(5);
-      setDragLabel(columnLabels[colId] ?? colId);
-      return;
-    }
-
-    setDragLabel('Column');
-  }
-
-  function handleDragEnd({ active, over }: DragEndEvent): void {
-    setDragLabel(null);
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId   = String(over.id);
-
-    if (activeId.startsWith('col:')) {
-      const colId = activeId.slice(4);
-      if (grouping.includes(colId)) return;
-      if (overId === 'band:dropzone') {
-        setGrouping((prev) => [...prev, colId]);
-        return;
-      }
-      if (overId.startsWith('chip:')) {
-        const targetColId = overId.slice(5);
-        const targetIdx   = grouping.indexOf(targetColId);
-        const insertAt    = targetIdx === -1 ? grouping.length : targetIdx;
-        setGrouping((prev) => { const next = [...prev]; next.splice(insertAt, 0, colId); return next; });
-        return;
-      }
-    }
-
-    if (activeId.startsWith('chip:') && overId.startsWith('chip:')) {
-      const fromCol  = activeId.slice(5);
-      const toCol    = overId.slice(5);
-      const oldIndex = grouping.indexOf(fromCol);
-      const newIndex = grouping.indexOf(toCol);
-      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-        setGrouping((prev) => arrayMove(prev, oldIndex, newIndex));
-      }
-    }
   }
 
   function renderRow(row: Row<TData>): ReactNode {
@@ -545,134 +396,41 @@ export function GroupableTable<TData extends Record<string, unknown>>({
       )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className={styles.toolboxWrapper}>
-          <button
-            data-testid="toggle-toolbox"
-            onClick={() => setShowToolbox((v) => !v)}
-            className={cx(styles.toolboxToggle, showToolbox && styles.toolboxToggleOpen)}
-          >
-            <span>Group &amp; Filter</span>
-            <span style={{ fontSize: 12 }}>{showToolbox ? '▲' : '▼'}</span>
-          </button>
-
-          {showToolbox && (
-            <div data-testid="toolbox" className={styles.toolboxBody}>
-              <GroupByBand
-                grouping={grouping}
-                columnLabels={columnLabels}
-                onRemove={handleRemoveGrouping}
-                isDragging={dragLabel !== null}
-              />
-
-              <div className={cx(styles.toolboxActions, showGroupPanel && styles.toolboxActionsSpaced)}>
-                <button
-                  data-testid="toggle-group-panel"
-                  onClick={() => setShowGroupPanel((v) => !v)}
-                  className={cx(styles.panelBtn, showGroupPanel && styles.panelBtnActive)}
-                >
-                  Group by
-                  {grouping.length > 0 && (
-                    <span data-testid="group-badge" className={styles.badge}>{grouping.length}</span>
-                  )}
-                </button>
-
-                <button
-                  data-testid="toggle-filters"
-                  onClick={() => setShowFilters((v) => !v)}
-                  className={cx(styles.panelBtn, showFilters && styles.panelBtnActive)}
-                >
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span data-testid="filter-badge" className={styles.badge}>{activeFilterCount}</span>
-                  )}
-                </button>
-
-                {showFilters && activeFilterCount > 0 && (
-                  <button
-                    data-testid="clear-filters"
-                    onClick={() => setColumnFilters([])}
-                    className={styles.clearBtn}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-
-              {showGroupPanel && (
-                <div data-testid="group-panel" className={styles.groupPanel}>
-                  {groupableColumnIds.map((colId) => {
-                    const active = grouping.includes(colId);
-                    return (
-                      <button
-                        key={colId}
-                        data-testid={`group-panel-toggle-${colId}`}
-                        onClick={() => handleToggleGrouping(colId)}
-                        className={cx(styles.groupPanelItem, active && styles.groupPanelItemActive)}
-                      >
-                        <span style={{ flex: 1 }}>{columnLabels[colId] ?? colId}</span>
-                        {active && <span style={{ fontSize: 16, color: 'var(--gt-accent)' }}>✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+        <ToolboxPanel
+          showToolbox={showToolbox}
+          onToggleToolbox={() => setShowToolbox((v) => !v)}
+          groupBand={(
+            <GroupByBand
+              grouping={grouping}
+              columnLabels={columnLabels}
+              onRemove={handleRemoveGrouping}
+              isDragging={dragLabel !== null}
+            />
           )}
-        </div>
+          showGroupPanel={showGroupPanel}
+          onToggleGroupPanel={() => setShowGroupPanel((v) => !v)}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters((v) => !v)}
+          groupingLength={grouping.length}
+          activeFilterCount={activeFilterCount}
+          onClearFilters={() => setColumnFilters([])}
+          groupableColumnIds={groupableColumnIds}
+          columnLabels={columnLabels}
+          grouping={grouping}
+          onToggleGrouping={handleToggleGrouping}
+        />
 
         <div ref={tableContainerRef} className={styles.tableContainer}>
           <table className={styles.table}>
-            <thead className={styles.thead}>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <DraggableHeader
-                      key={header.id}
-                      header={header}
-                      isGrouped={grouping.includes(header.column.id)}
-                    />
-                  ))}
-                </tr>
-              ))}
-
-              {showFilters && (
-                <tr className={styles.filterRow}>
-                  {table.getHeaderGroups()[0]?.headers.map((header) => {
-                    const canFilter   = header.column.getCanFilter();
-                    const filterValue = (header.column.getFilterValue() ?? '') as string;
-                    return (
-                      <th key={header.id} className={styles.filterTh}>
-                        {canFilter ? (
-                          <input
-                            data-testid={`filter-${header.column.id}`}
-                            value={filterValue}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                              header.column.setFilterValue(e.target.value || undefined)
-                            }
-                            placeholder="Filter…"
-                            aria-label={`Filter ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.column.id}`}
-                            className={styles.filterInput}
-                          />
-                        ) : null}
-                      </th>
-                    );
-                  })}
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {paddingTop > 0 && (
-                <tr><td colSpan={colCount} style={{ height: paddingTop, padding: 0 }} /></tr>
-              )}
-              {virtualItems.map((virtualRow) => {
-                const row = rows[virtualRow.index];
-                if (!row) return null;
-                return renderRow(row);
-              })}
-              {paddingBottom > 0 && (
-                <tr><td colSpan={colCount} style={{ height: paddingBottom, padding: 0 }} /></tr>
-              )}
-            </tbody>
+            <TableHeaderSection table={table} grouping={grouping} showFilters={showFilters} />
+            <VirtualizedTableBody
+              colCount={colCount}
+              paddingTop={paddingTop}
+              paddingBottom={paddingBottom}
+              virtualItems={virtualItems}
+              rows={rows}
+              renderRow={renderRow}
+            />
           </table>
         </div>
       </DndContext>
@@ -681,73 +439,20 @@ export function GroupableTable<TData extends Record<string, unknown>>({
         {rows.length} rows ({data.length} total)
       </p>
 
-      {menu && rowActions && (
-        <div
-          ref={menuRef}
-          role="menu"
-          data-testid="context-menu"
-          className={styles.contextMenu}
-          style={{
-            top:  Math.min(menu.y, window.innerHeight - 120),
-            left: Math.min(menu.x, window.innerWidth  - 200),
-          }}
-        >
-          {rowActions.map((action, i) => {
-            const isDisabled = action.disabled?.(menuTargetRows) ?? false;
-            const label = menuTargetRows.length > 1 ? `${action.label} (${menuTargetRows.length})` : action.label;
-            return (
-              <button
-                key={i}
-                role="menuitem"
-                data-testid={`context-menu-item-${i}`}
-                disabled={isDisabled}
-                onClick={() => { action.onClick(menuTargetRows); setMenu(null); }}
-                className={styles.menuItem}
-              >
-                {label}
-              </button>
-            );
-          })}
-          <button
-            role="menuitem"
-            data-testid="context-menu-copy"
-            onClick={() => { copyRows(menuTargetRows); setMenu(null); }}
-            className={styles.menuItem}
-          >
-            {menuTargetRows.length > 1 ? `Copy (${menuTargetRows.length})` : 'Copy'}
-          </button>
-          <hr className={styles.menuDivider} />
-          {!menu.rowInSelection && (
-            <button
-              role="menuitem"
-              data-testid="context-menu-add-to-selection"
-              onClick={() => { addToSelection(menu.rowId); setMenu(null); }}
-              className={styles.menuItem}
-            >
-              Add to selection
-            </button>
-          )}
-          {menu.rowInSelection && (
-            <button
-              role="menuitem"
-              data-testid="context-menu-remove-from-selection"
-              onClick={() => { removeFromSelection(menu.rowId); setMenu(null); }}
-              className={styles.menuItem}
-            >
-              Remove from selection
-            </button>
-          )}
-          {(selectedRowId !== null || selectedIds.size > 0) && (
-            <button
-              role="menuitem"
-              data-testid="context-menu-unselect-all"
-              onClick={() => { unselectAll(); setMenu(null); }}
-              className={styles.menuItem}
-            >
-              Unselect all
-            </button>
-          )}
-        </div>
+      {menu && (
+        <RowContextMenu
+          menu={menu}
+          menuRef={menuRef}
+          rowActions={rowActions}
+          menuTargetRows={menuTargetRows}
+          selectedRowId={selectedRowId}
+          selectedIdsSize={selectedIds.size}
+          onActionClick={(action) => { action.onClick(menuTargetRows); setMenu(null); }}
+          onCopy={() => { copyRows(menuTargetRows); setMenu(null); }}
+          onAddToSelection={() => { addToSelection(menu.rowId); setMenu(null); }}
+          onRemoveFromSelection={() => { removeFromSelection(menu.rowId); setMenu(null); }}
+          onUnselectAll={() => { unselectAll(); setMenu(null); }}
+        />
       )}
     </div>
   );
